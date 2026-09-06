@@ -1,0 +1,143 @@
+@import '@fontsource-variable/inter/index.css';
+@import '@fontsource-variable/sora/index.css';
+@import 'tailwindcss';
+
+@plugin 'daisyui' {
+  themes:
+    agroflete --default,
+    agroflete-dark --prefersdark;
+}
+
+/* Tema claro: paleta "agro fresco" del sistema de diseño (docs/plan). */
+@plugin 'daisyui/theme' {
+  name: 'agroflete';
+  default: true;
+  color-scheme: light;
+
+  --color-base-100: #ffffff;
+  --color-base-200: #f6f8f3;
+  --color-base-300: #e7ece1;
+  --color-base-content: #0f2417;
+
+  --color-primary: #1f7a45;
+  --color-primary-content: #f4fbf6;
+  --color-secondary: #2f9e5e;
+  --color-secondary-content: #06210f;
+  --color-accent: #a8d84a;
+  --color-accent-content: #14260a;
+  --color-neutral: #14281c;
+  --color-neutral-content: #eaf2ec;
+
+  --color-info: #2563eb;
+  --color-info-content: #eef4ff;
+  --color-success: #1f7a45;
+  --color-success-content: #f4fbf6;
+  --color-warning: #b7791f;
+  --color-warning-content: #fff7ec;
+  --color-error: #c0362c;
+  --color-error-content: #fff1f0;
+
+  --radius-selector: 1rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1.25rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+@plugin 'daisyui/theme' {
+  name: 'agroflete-dark';
+  color-scheme: dark;
+
+  --color-base-100: #0f1a13;
+  --color-base-200: #0b140f;
+  --color-base-300: #1b2b21;
+  --color-base-content: #e7f0e9;
+
+  --color-primary: #54c787;
+  --color-primary-content: #06210f;
+  --color-secondary: #2f9e5e;
+  --color-secondary-content: #06210f;
+  --color-accent: #a8d84a;
+  --color-accent-content: #14260a;
+  --color-neutral: #e7f0e9;
+  --color-neutral-content: #0f1a13;
+
+  --color-info: #60a5fa;
+  --color-info-content: #06121f;
+  --color-success: #54c787;
+  --color-success-content: #06210f;
+  --color-warning: #e0a942;
+  --color-warning-content: #241803;
+  --color-error: #f08a80;
+  --color-error-content: #240604;
+
+  --radius-selector: 1rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1.25rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+/* Tokens de Tailwind (utilidades como font-display, rounded-xl, shadow-soft). */
+@theme {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Sora Variable', 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+
+  --color-brand-700: #1f7a45;
+  --color-brand-500: #2f9e5e;
+  --color-brand-300: #54c787;
+  --color-lima: #a8d84a;
+  --color-ink: #0f2417;
+  --color-surface: #f6f8f3;
+
+  --radius-md: 0.75rem;
+  --radius-lg: 1.25rem;
+  --radius-xl: 2rem;
+
+  --shadow-soft: 0 8px 24px -12px rgb(31 122 69 / 0.25);
+  --shadow-card: 0 1px 2px rgb(15 36 23 / 0.06), 0 12px 32px -16px rgb(31 122 69 / 0.22);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-base-200 text-base-content font-sans antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display tracking-tight;
+    font-family: var(--font-display);
+  }
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-6xl px-4 sm:px-6;
+  }
+
+  /* Compat DaisyUI v4: `form-control` y `label-text` desaparecieron en v5. Los
+     formularios del portal las usan para apilar etiqueta + input + error; sin
+     esto el <label> queda inline y los textos se solapan. */
+  .form-control {
+    @apply flex flex-col;
+  }
+  .label-text {
+    @apply text-sm font-medium text-base-content/90;
+  }
+  .reveal {
+    @apply translate-y-4 opacity-0 transition-all duration-700 ease-out;
+  }
+  .reveal--visible {
+    @apply translate-y-0 opacity-100;
+  }
+}

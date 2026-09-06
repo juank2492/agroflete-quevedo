@@ -1,0 +1,19 @@
+packages:
+  - shared
+  - api
+  - scripts
+  - web
+
+# node_modules plano: compatibilidad con Angular CLI, Karma y tsx.
+nodeLinker: hoisted
+linkWorkspacePackages: true
+
+# Scripts de instalación autorizados (binarios nativos del toolchain de Angular y
+# de los tests; todos con binarios precompilados). Cualquier dependencia nueva
+# con postinstall queda bloqueada hasta añadirla aquí explícitamente.
+allowBuilds:
+  esbuild: true
+  '@swc/core': true
+  '@parcel/watcher': true
+  lmdb: true
+  msgpackr-extract: true

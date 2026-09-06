@@ -1,0 +1,169 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  AgroFlete Quevedo - plataforma serverless de optimizacion de fletes agricolas.
+  Infraestructura como codigo (AWS SAM). Se DESPLIEGA en la Fase A, cuando el
+  sistema ya funciona 100% en local. Aqui solo se escribe y se valida con `sam validate`.
+
+Parameters:
+  Etapa:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+  WebOrigin:
+    Type: String
+    Default: http://localhost:4200
+    Description: Origen permitido para CORS del portal Angular.
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Architectures: [arm64]
+    MemorySize: 512
+    Timeout: 15
+    Tracing: Active
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref TablaPrincipal
+        NODE_ENV: production
+        WEB_ORIGIN: !Ref WebOrigin
+  Api:
+    Cors:
+      AllowMethods: "'GET,POST,PUT,PATCH,DELETE,OPTIONS'"
+      AllowHeaders: "'Content-Type,Authorization'"
+      AllowOrigin: !Sub "'${WebOrigin}'"
+
+Resources:
+  # --- Persistencia: DynamoDB single-table, on-demand => costo 0 en inactividad ---
+  TablaPrincipal:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'AgrofleteTable-${Etapa}'
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+        - { AttributeName: gsi1pk, AttributeType: S }
+        - { AttributeName: gsi1sk, AttributeType: S }
+        - { AttributeName: gsi2pk, AttributeType: S }
+        - { AttributeName: gsi2sk, AttributeType: S }
+        - { AttributeName: gsi3pk, AttributeType: S }
+        - { AttributeName: gsi3sk, AttributeType: S }
+        - { AttributeName: gsi4pk, AttributeType: S }
+        - { AttributeName: gsi4sk, AttributeType: S }
+        - { AttributeName: gsi5pk, AttributeType: S }
+        - { AttributeName: gsi5sk, AttributeType: S }
+        - { AttributeName: gsi6pk, AttributeType: S }
+        - { AttributeName: gsi6sk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: gsi1
+          KeySchema:
+            - { AttributeName: gsi1pk, KeyType: HASH }
+            - { AttributeName: gsi1sk, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+        - IndexName: gsi2
+          KeySchema:
+            - { AttributeName: gsi2pk, KeyType: HASH }
+            - { AttributeName: gsi2sk, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+        - IndexName: gsi3
+          KeySchema:
+            - { AttributeName: gsi3pk, KeyType: HASH }
+            - { AttributeName: gsi3sk, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+        - IndexName: gsi4
+          KeySchema:
+            - { AttributeName: gsi4pk, KeyType: HASH }
+            - { AttributeName: gsi4sk, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+        - IndexName: gsi5
+          KeySchema:
+            - { AttributeName: gsi5pk, KeyType: HASH }
+            - { AttributeName: gsi5sk, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+        - IndexName: gsi6
+          KeySchema:
+            - { AttributeName: gsi6pk, KeyType: HASH }
+            - { AttributeName: gsi6sk, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+
+  # --- Bus de eventos de dominio (reemplaza el outbox+worker local) ---
+  BusEventos:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: !Sub 'agroflete-bus-${Etapa}'
+
+  ColaNotificaciones:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'agroflete-notificaciones-${Etapa}'
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ColaNotificacionesDLQ.Arn
+        maxReceiveCount: 5
+
+  ColaNotificacionesDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'agroflete-notificaciones-dlq-${Etapa}'
+
+  # --- API HTTP ---
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Etapa
+
+  # --- Funcion de ejemplo (health). Las demas se agregan en la Fase A. ---
+  FnHealth:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'agroflete-health-${Etapa}'
+      CodeUri: ../api/dist/
+      Handler: entrypoints/lambda/health.handler
+      Events:
+        Salud:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /salud
+
+  # --- Panel de metricas para el capitulo de resultados del documento ---
+  PanelMetricas:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub 'AgroFlete-${Etapa}'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            { "type": "metric", "x": 0, "y": 0, "width": 12, "height": 6,
+              "properties": { "title": "Lambda - Init Duration (cold start)",
+                "region": "${AWS::Region}",
+                "metrics": [ [ "AWS/Lambda", "InitDuration", "FunctionName", "${FnHealth}" ] ] } },
+            { "type": "metric", "x": 12, "y": 0, "width": 12, "height": 6,
+              "properties": { "title": "Lambda - Duration / Max Memory",
+                "region": "${AWS::Region}",
+                "metrics": [
+                  [ "AWS/Lambda", "Duration", "FunctionName", "${FnHealth}" ],
+                  [ "AWS/Lambda", "Errors", "FunctionName", "${FnHealth}" ] ] } },
+            { "type": "metric", "x": 0, "y": 6, "width": 24, "height": 6,
+              "properties": { "title": "API Gateway - Latencia p50/p95",
+                "region": "${AWS::Region}",
+                "metrics": [
+                  [ "AWS/ApiGateway", "Latency", "ApiId", "${HttpApi}", { "stat": "p50" } ],
+                  [ "AWS/ApiGateway", "Latency", "ApiId", "${HttpApi}", { "stat": "p95" } ] ] } }
+          ]
+        }
+
+Outputs:
+  ApiUrl:
+    Description: URL base de la API
+    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Etapa}'
+  TablaNombre:
+    Value: !Ref TablaPrincipal
+  BusNombre:
+    Value: !Ref BusEventos

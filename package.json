@@ -1,0 +1,41 @@
+{
+  "name": "agroflete-quevedo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plataforma web serverless para la optimización de fletes agrícolas en Quevedo",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.12.0",
+  "scripts": {
+    "build:shared": "pnpm --filter @agroflete/shared build",
+    "typecheck": "pnpm build:shared && pnpm -r typecheck",
+    "dev:api": "pnpm --filter @agroflete/api dev",
+    "dev:worker": "pnpm --filter @agroflete/api dev:worker",
+    "dev:web": "pnpm --filter web start",
+    "dev": "pnpm build:shared && concurrently -n api,worker,web -c green,yellow,cyan \"pnpm:dev:api\" \"pnpm:dev:worker\" \"pnpm:dev:web\"",
+    "local": "pnpm local:setup && pnpm dev",
+    "local:setup": "pnpm infra:up && pnpm --filter @agroflete/scripts wait:dynamo && pnpm db:migrate && pnpm db:seed",
+    "infra:up": "pnpm --filter @agroflete/scripts infra up",
+    "infra:down": "pnpm --filter @agroflete/scripts infra down",
+    "infra:logs": "pnpm --filter @agroflete/scripts infra logs",
+    "db:migrate": "pnpm --filter @agroflete/scripts migrate",
+    "db:seed": "pnpm --filter @agroflete/scripts seed",
+    "test": "pnpm build:shared && pnpm --filter @agroflete/api test",
+    "test:cov": "pnpm build:shared && pnpm --filter @agroflete/api test:cov",
+    "test:web": "pnpm --filter web exec ng test --watch=false --browsers=ChromeHeadless",
+    "test:load": "pnpm --filter @agroflete/scripts load",
+    "test:coldstart": "pnpm --filter @agroflete/api build:bundle && pnpm --filter @agroflete/scripts coldstart",
+    "lint": "eslint .",
+    "format": "prettier --write \"**/*.{ts,js,mjs,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,js,mjs,json,md,yml,yaml}\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "concurrently": "^9.1.2",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.2",
+    "typescript": "~5.7.3",
+    "typescript-eslint": "^8.20.0"
+  }
+}

@@ -1,0 +1,39 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# builds
+dist/
+build/
+.aws-sam/
+web/.angular/
+web/dist/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# logs
+*.log
+npm-debug.log*
+logs/
+
+# editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+
+# test / coverage
+coverage/
+*.lcov
+
+# docker volumes
+.docker-data/
+
+# misc
+*.local

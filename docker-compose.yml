@@ -1,0 +1,25 @@
+# Infraestructura LOCAL. NADA de esto usa una cuenta AWS.
+# Alternativa a `pnpm infra:up` para quien tenga el plugin `docker compose`.
+#   docker compose up -d
+#
+# - dynamodb: emulador oficial de DynamoDB, 100% offline. -inMemory => los datos
+#   se pierden al bajar el contenedor (re-ejecutar db:migrate + db:seed).
+# - mailpit: servidor SMTP local con interfaz web (http://localhost:8025).
+
+services:
+  dynamodb:
+    image: amazon/dynamodb-local:2.5.2
+    container_name: agroflete-dynamodb
+    command: ['-jar', 'DynamoDBLocal.jar', '-sharedDb', '-inMemory']
+    ports:
+      - '8010:8000'
+
+  mailpit:
+    image: axllent/mailpit:v1.21
+    container_name: agroflete-mailpit
+    ports:
+      - '1025:1025' # SMTP
+      - '8025:8025' # UI web -> http://localhost:8025
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+      MP_SMTP_AUTH_ALLOW_INSECURE: 'true'

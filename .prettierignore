@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-bundle/
+build/
+coverage/
+.aws-sam/
+web/.angular/
+web/dist/
+pnpm-lock.yaml
+CHANGELOG.md

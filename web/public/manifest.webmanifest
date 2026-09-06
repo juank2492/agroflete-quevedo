@@ -1,0 +1,25 @@
+{
+  "name": "AgroFlete Quevedo",
+  "short_name": "AgroFlete",
+  "description": "Optimización de fletes agrícolas en Quevedo",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f8f3",
+  "theme_color": "#1f7a45",
+  "icons": [
+    {
+      "src": "icons/logo-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/logo-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

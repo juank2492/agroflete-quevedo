@@ -1,0 +1,52 @@
+{
+  "name": "@agroflete/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/entrypoints/http-express/server.ts",
+    "dev:worker": "tsx watch src/entrypoints/worker/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "build:bundle": "esbuild src/entrypoints/http-express/server.ts --bundle --platform=node --format=esm --target=node20 --minify --outfile=dist-bundle/server.mjs --external:@aws-sdk/* --external:pino --external:pino-pretty --banner:js=\"import{createRequire as __cr}from'module';const require=__cr(import.meta.url);\"",
+    "start": "node dist/entrypoints/http-express/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:cov": "jest --coverage"
+  },
+  "dependencies": {
+    "@agroflete/shared": "workspace:*",
+    "@aws-sdk/client-dynamodb": "^3.726.0",
+    "@aws-sdk/lib-dynamodb": "^3.726.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.16",
+    "pino": "^9.6.0",
+    "pino-http": "^10.4.0",
+    "ulid": "^2.3.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@swc/core": "^1.10.7",
+    "@swc/jest": "^0.2.37",
+    "esbuild": "^0.24.2",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.14",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^22.10.5",
+    "@types/node-cron": "^3.0.11",
+    "@types/nodemailer": "^6.4.17",
+    "@types/supertest": "^6.0.2",
+    "jest": "^29.7.0",
+    "pino-pretty": "^13.0.0",
+    "supertest": "^7.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "~5.7.3"
+  }
+}
