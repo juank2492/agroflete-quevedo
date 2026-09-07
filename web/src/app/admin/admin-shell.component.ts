@@ -73,7 +73,7 @@ export class AdminShellComponent {
     { path: 'fletes', label: 'Fletes', icon: 'truck' },
     { path: 'flota', label: 'Flota', icon: 'users' },
     { path: 'inventario', label: 'Inventario', icon: 'box' },
-    { path: 'tarifas', label: 'Tarifas', icon: 'chart' },
+    { path: 'tarifas', label: 'Tarifas', icon: 'dollar' },
     { path: 'metricas', label: 'Métricas', icon: 'chart' },
     { path: 'ajustes', label: 'Ajustes', icon: 'sliders' },
     { path: 'perfil', label: 'Mi perfil', icon: 'user' },
