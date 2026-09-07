@@ -25,7 +25,6 @@ describe('NuevaSolicitudComponent — confirmar en ≤ 3 toques', () => {
   let navigateSpy: jasmine.Spy;
 
   beforeEach(() => {
-    // Geolocalización determinista: responde con éxito inmediato.
     Object.defineProperty(navigator, 'geolocation', {
       configurable: true,
       value: {
@@ -42,7 +41,15 @@ describe('NuevaSolicitudComponent — confirmar en ≤ 3 toques', () => {
       providers: [
         {
           provide: TarifaService,
-          useValue: { listarAcopios: () => of([ACOPIO]), estimar: () => of(ESTIMACION) },
+          useValue: {
+            listarAcopios: () => of([ACOPIO]),
+            listarCultivos: () =>
+              of([
+                { clave: 'maiz', nombre: 'Maíz' },
+                { clave: 'banano', nombre: 'Banano' },
+              ]),
+            estimar: () => of(ESTIMACION),
+          },
         },
         { provide: SolicitudService, useValue: { crear: crearSpy } },
         { provide: UiFeedbackService, useValue: { success: () => {}, error: () => {} } },
@@ -59,13 +66,10 @@ describe('NuevaSolicitudComponent — confirmar en ≤ 3 toques', () => {
       confirmar: () => void;
       form: { value: Record<string, unknown> };
     };
-    fixture.detectChanges(); // ngOnInit: carga acopios + geolocalización + preselección
+    fixture.detectChanges();
 
-    // Toque 1
     cmp.setCultivo('banano');
-    // Toque 2
     cmp.ajustarPeso(1);
-    // Toque 3
     cmp.confirmar();
 
     expect(crearSpy).toHaveBeenCalledTimes(1);
@@ -75,9 +79,9 @@ describe('NuevaSolicitudComponent — confirmar en ≤ 3 toques', () => {
       pesoTon: number;
       origen: { lat: number; lon: number };
     };
-    expect(payload.acopioId).toBe('acopio-centro'); // preseleccionado
+    expect(payload.acopioId).toBe('acopio-centro');
     expect(payload.cultivo).toBe('banano');
-    expect(payload.pesoTon).toBe(6); // 5 inicial + 1
+    expect(payload.pesoTon).toBe(6);
     expect(payload.origen).toEqual({ lat: -1.05, lon: -79.47 });
     expect(navigateSpy).toHaveBeenCalledWith(['/p/solicitudes', 'sol-1']);
   });

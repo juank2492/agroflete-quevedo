@@ -2,15 +2,18 @@
 
 ## Eventos de dominio y sus productores/consumidores
 
-| Evento                     | Lo produce                             | Lo consume                                                                         |
-| -------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------- |
-| `UsuarioRegistrado`        | `RegistrarUsuario`                     | `Notificar` → correo con código                                                    |
-| `ReglasTarifaActualizadas` | `ActualizarReglasTarifa`               | (auditoría; sin efecto en L1–L6)                                                   |
-| `SolicitudCreada`          | `CrearSolicitud`                       | `Notificar` → "solicitud recibida" al productor · _(roadmap: EmparejarAutomatico)_ |
-| `FleteAsignado`            | `AsignarFlete`                         | `Notificar` → productor + transportista                                            |
-| `EstadoFleteCambiado`      | `CambiarEstadoFlete` (salvo ENTREGADO) | `Notificar` → productor                                                            |
-| `EntregaConfirmada`        | `CambiarEstadoFlete` (ENTREGADO)       | `Notificar` → productor · _(roadmap: ActualizarStock)_                             |
-| `RetrasoDetectado`         | `DetectarRetrasos` (cron)              | `Notificar` → productor                                                            |
+| Evento                     | Lo produce                                                                                                                                        | Lo consume                                                                                                                     |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `UsuarioRegistrado`        | `RegistrarUsuario`                                                                                                                                | `Notificar` → correo con código                                                                                                |
+| `ReglasTarifaActualizadas` | `ActualizarReglasTarifa`                                                                                                                          | (auditoría; sin efecto en L1–L6)                                                                                               |
+| `SolicitudCreada`          | `CrearSolicitud`                                                                                                                                  | `Notificar` → "solicitud recibida" al productor · `emparejar-automatico` → asigna si hay vehículo y el interruptor está activo |
+| `FleteAsignado`            | `AsignarFlete` (manual o `emparejar-automatico`, con `auto`)                                                                                      | `Notificar` → productor + transportista                                                                                        |
+| `EstadoFleteCambiado`      | `CambiarEstadoFlete` (salvo ENTREGADO)                                                                                                            | `Notificar` → productor                                                                                                        |
+| `EntregaConfirmada`        | `CambiarEstadoFlete` (ENTREGADO) — sea por el transportista o por la **geocerca** (`RegistrarUbicacion` al entrar al acopio con el flete EN_RUTA) | `Notificar` → productor · `actualizar-stock` → +`pesoTon` al inventario del acopio                                             |
+| `RetrasoDetectado`         | `DetectarRetrasos` (cron)                                                                                                                         | `Notificar` → productor                                                                                                        |
+| `IncidenciaEnRuta`         | `RegistrarIncidencia`                                                                                                                             | `Notificar` → productor ("tu carga se está reasignando")                                                                       |
+| `StockBajo` / `StockAlto`  | `RegistrarMovimientoStock` (entrega o ajuste manual del admin)                                                                                    | `Notificar` → correo al admin (`ADMIN_EMAIL`)                                                                                  |
+| `TransportistaCreado`      | `CrearTransportista` (alta por el admin)                                                                                                          | `Notificar` → correo al transportista con su usuario y contraseña temporal                                                     |
 
 ## Flujo local
 

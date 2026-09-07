@@ -30,7 +30,8 @@
                 "input": "public"
               }
             ],
-            "styles": ["src/styles.css"]
+            "styles": ["src/styles.css"],
+            "allowedCommonJsDependencies": ["leaflet"]
           },
           "configurations": {
             "production": {
@@ -65,6 +66,11 @@
         },
         "serve": {
           "builder": "@angular/build:dev-server",
+          "options": {
+            "prebundle": {
+              "exclude": ["@agroflete/shared"]
+            }
+          },
           "configurations": {
             "production": {
               "buildTarget": "web:build:production"

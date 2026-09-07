@@ -23,7 +23,7 @@ export function makeOutboxRepository(doc: DynamoDBDocumentClient, table: string)
         estado: 'PENDIENTE',
         intentos: 0,
         procesadoPor: [],
-        // índice de pendientes (se elimina al procesar)
+        // Al procesarlo se elimina del índice de pendientes.
         gsi6pk: PENDIENTE_PK,
         gsi6sk: rec.id,
       };

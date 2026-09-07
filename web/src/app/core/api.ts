@@ -18,7 +18,10 @@ function toParams(query?: Record<string, QueryValue>): HttpParams | undefined {
   return params;
 }
 
-/** Cliente HTTP fino: agrega la baseUrl y desenvuelve `{ data }`. */
+/** Respuestas 204 (sin cuerpo) llegan como `null`: no intentes leer `.data`. */
+const desenvolver = <T>(r: ApiOk<T> | null): T => (r ? r.data : (undefined as T));
+
+/** Cliente HTTP que agrega la baseUrl y desenvuelve `{ data }`. */
 @Injectable({ providedIn: 'root' })
 export class Api {
   private readonly http = inject(HttpClient);
@@ -27,18 +30,18 @@ export class Api {
   get<T>(path: string, query?: Record<string, QueryValue>): Observable<T> {
     return this.http
       .get<ApiOk<T>>(this.base + path, { params: toParams(query) })
-      .pipe(map((r) => r.data));
+      .pipe(map(desenvolver));
   }
 
   post<T>(path: string, body?: unknown): Observable<T> {
-    return this.http.post<ApiOk<T>>(this.base + path, body ?? {}).pipe(map((r) => r.data));
+    return this.http.post<ApiOk<T>>(this.base + path, body ?? {}).pipe(map(desenvolver));
   }
 
   put<T>(path: string, body?: unknown): Observable<T> {
-    return this.http.put<ApiOk<T>>(this.base + path, body ?? {}).pipe(map((r) => r.data));
+    return this.http.put<ApiOk<T>>(this.base + path, body ?? {}).pipe(map(desenvolver));
   }
 
   patch<T>(path: string, body?: unknown): Observable<T> {
-    return this.http.patch<ApiOk<T>>(this.base + path, body ?? {}).pipe(map((r) => r.data));
+    return this.http.patch<ApiOk<T>>(this.base + path, body ?? {}).pipe(map(desenvolver));
   }
 }

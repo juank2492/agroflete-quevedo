@@ -1,5 +1,10 @@
 import type { JwtClaims } from '@agroflete/shared';
-import { ConflictError, ForbiddenError, NotFoundError } from '../../domain/errors.js';
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from '../../domain/errors.js';
 import {
   contextoDePrueba,
   crearTablaTest,
@@ -15,6 +20,8 @@ import { cambiarEstadoFlete } from './cambiar-estado-flete.js';
 import { listarFletes, obtenerFlete } from './consultar-fletes.js';
 import { detectarRetrasos } from './detectar-retrasos.js';
 import { obtenerMetricasOperativas } from './metricas-operativas.js';
+import { registrarIncidencia } from './registrar-incidencia.js';
+import { consultarRuta, registrarUbicacion } from './registrar-ubicacion.js';
 
 const TABLA = 'AgrofleteTable-it-monitoreo';
 
@@ -109,7 +116,7 @@ describe('monitoreo (integración con DynamoDB Local)', () => {
     expect((await h.ctx.repos.vehiculos.porId(v.id))?.estado).toBe('DISPONIBLE');
 
     const flujoFinal = await h.ctx.repos.fletes.porId(flete.id);
-    expect(flujoFinal?.timeline).toHaveLength(5); // ASIGNADO + 4 transiciones
+    expect(flujoFinal?.timeline).toHaveLength(5);
 
     const pend = await h.ctx.repos.outbox.pendientes(50);
     expect(pend.some((e) => e.tipo === 'EntregaConfirmada')).toBe(true);
@@ -125,6 +132,160 @@ describe('monitoreo (integración con DynamoDB Local)', () => {
     expect(solicitud?.estado).toBe('PENDIENTE');
     expect(solicitud?.fleteId).toBeUndefined();
     expect((await h.ctx.repos.vehiculos.porId(v.id))?.estado).toBe('DISPONIBLE');
+  });
+
+  it('cambiarEstadoFlete: el transportista debe indicar el motivo al cancelar; queda guardado', async () => {
+    if (!disponible) return;
+    const { flete } = await crearFleteListo(h, 'p-4b', 't-4b');
+    const user = transportista('t-4b');
+
+    await expect(cambiarEstadoFlete(h.ctx, user, flete.id, 'CANCELADO')).rejects.toBeInstanceOf(
+      ValidationError,
+    );
+
+    const cancelado = await cambiarEstadoFlete(
+      h.ctx,
+      user,
+      flete.id,
+      'CANCELADO',
+      'Se dañó el vehículo en la vía',
+    );
+    expect(cancelado.motivoCancelacion).toBe('Se dañó el vehículo en la vía');
+
+    const guardado = await h.ctx.repos.fletes.porId(flete.id);
+    expect(guardado?.motivoCancelacion).toBe('Se dañó el vehículo en la vía');
+    expect(guardado?.timeline.at(-1)?.motivo).toBe('Se dañó el vehículo en la vía');
+
+    const pend = await h.ctx.repos.outbox.pendientes(50);
+    const ev = pend.find(
+      (e) =>
+        e.tipo === 'EstadoFleteCambiado' && (e.payload as { fleteId: string }).fleteId === flete.id,
+    );
+    expect((ev?.payload as { motivo?: string }).motivo).toBe('Se dañó el vehículo en la vía');
+  });
+
+  it('registrarIncidencia: flete → INCIDENCIA, solicitud vuelve a la cola marcada, vehículo fuera de servicio', async () => {
+    if (!disponible) return;
+    const { s, v, flete } = await crearFleteListo(h, 'p-inc', 't-inc');
+    const user = transportista('t-inc');
+    await cambiarEstadoFlete(h.ctx, user, flete.id, 'EN_CAMINO_ORIGEN');
+
+    const actualizado = await registrarIncidencia(h.ctx, user, flete.id, {
+      motivo: 'Se rompió el eje trasero en la vía',
+      vehiculoFueraDeServicio: true,
+    });
+    expect(actualizado.estado).toBe('INCIDENCIA');
+    expect(actualizado.incidencia?.motivo).toContain('eje trasero');
+
+    const solicitud = await h.ctx.repos.solicitudes.porId(s.id);
+    expect(solicitud?.estado).toBe('PENDIENTE');
+    expect(solicitud?.fleteId).toBeUndefined();
+    expect(solicitud?.reasignacionPorIncidencia).toBe(true);
+    expect(solicitud?.motivoIncidencia).toContain('eje trasero');
+
+    expect((await h.ctx.repos.vehiculos.porId(v.id))?.estado).toBe('INACTIVO');
+
+    const pend = await h.ctx.repos.outbox.pendientes(50);
+    expect(pend.some((e) => e.tipo === 'IncidenciaEnRuta')).toBe(true);
+  });
+
+  it('registrarIncidencia: sin "fuera de servicio" el vehículo vuelve a DISPONIBLE; no se puede antes de salir', async () => {
+    if (!disponible) return;
+    const { v, flete } = await crearFleteListo(h, 'p-inc2', 't-inc2');
+    const user = transportista('t-inc2');
+
+    await expect(
+      registrarIncidencia(h.ctx, user, flete.id, {
+        motivo: 'nada',
+        vehiculoFueraDeServicio: false,
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+
+    await cambiarEstadoFlete(h.ctx, user, flete.id, 'EN_CAMINO_ORIGEN');
+    await registrarIncidencia(h.ctx, user, flete.id, {
+      motivo: 'Vía cerrada por protesta, no puedo continuar',
+      vehiculoFueraDeServicio: false,
+    });
+    expect((await h.ctx.repos.vehiculos.porId(v.id))?.estado).toBe('DISPONIBLE');
+  });
+
+  it('registrarUbicacion: guarda el punto, actualiza ultimaUbicacion y arma la ruta', async () => {
+    if (!disponible) return;
+    const { flete } = await crearFleteListo(h, 'p-ub', 't-ub');
+    const user = transportista('t-ub');
+    await cambiarEstadoFlete(h.ctx, user, flete.id, 'EN_CAMINO_ORIGEN');
+
+    await registrarUbicacion(h.ctx, user, flete.id, { lat: -1.04, lon: -79.47, velocidad: 45 });
+    await registrarUbicacion(h.ctx, user, flete.id, { lat: -1.035, lon: -79.465 });
+
+    const actualizado = await h.ctx.repos.fletes.porId(flete.id);
+    expect(actualizado?.ultimaUbicacion?.lat).toBe(-1.035);
+
+    const ruta = await consultarRuta(h.ctx, user, flete.id);
+    expect(ruta).toHaveLength(2);
+    expect(ruta[0]!.velocidad).toBe(45);
+    expect(ruta[0]!.ts <= ruta[1]!.ts).toBe(true);
+
+    await expect(
+      registrarUbicacion(h.ctx, transportista('t-otro'), flete.id, { lat: -1.03, lon: -79.46 }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it('registrarUbicacion: rechaza coordenadas fuera de Ecuador y fletes ya cerrados', async () => {
+    if (!disponible) return;
+    const { flete } = await crearFleteListo(h, 'p-ub2', 't-ub2');
+    const user = transportista('t-ub2');
+
+    await expect(
+      registrarUbicacion(h.ctx, user, flete.id, { lat: 40.4, lon: -3.7 }),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    for (const e of ['EN_CAMINO_ORIGEN', 'CARGANDO', 'EN_RUTA', 'ENTREGADO'] as const) {
+      await cambiarEstadoFlete(h.ctx, user, flete.id, e);
+    }
+    await expect(
+      registrarUbicacion(h.ctx, user, flete.id, { lat: -1.04, lon: -79.47 }),
+    ).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it('asignarFlete guarda la ruta vial denormalizada (RoutingPort)', async () => {
+    if (!disponible) return;
+    const { flete } = await crearFleteListo(h, 'p-ruta', 't-ruta');
+    const guardado = await h.ctx.repos.fletes.porId(flete.id);
+    expect(guardado?.rutaVial?.length).toBeGreaterThanOrEqual(2);
+    expect(guardado?.distanciaVialKm).toBeGreaterThan(0);
+    expect(guardado?.origen).toEqual(FINCA);
+    expect(guardado?.destino).toEqual({ lat: ACOPIO.lat, lon: ACOPIO.lon });
+  });
+
+  it('registrarUbicacion: al entrar en la geocerca del acopio confirma la entrega', async () => {
+    if (!disponible) return;
+    const { s, v, flete } = await crearFleteListo(h, 'p-geo', 't-geo');
+    const user = transportista('t-geo');
+    for (const e of ['EN_CAMINO_ORIGEN', 'CARGANDO', 'EN_RUTA'] as const) {
+      await cambiarEstadoFlete(h.ctx, user, flete.id, e);
+    }
+
+    const lejos = await registrarUbicacion(h.ctx, user, flete.id, { lat: -1.05, lon: -79.47 });
+    expect(lejos.entregaDetectada).toBe(false);
+
+    const cerca = await registrarUbicacion(h.ctx, user, flete.id, {
+      lat: ACOPIO.lat,
+      lon: ACOPIO.lon,
+    });
+    expect(cerca.entregaDetectada).toBe(true);
+
+    expect((await h.ctx.repos.fletes.porId(flete.id))?.estado).toBe('ENTREGADO');
+    expect((await h.ctx.repos.solicitudes.porId(s.id))?.estado).toBe('COMPLETADA');
+    expect((await h.ctx.repos.vehiculos.porId(v.id))?.estado).toBe('DISPONIBLE');
+
+    const pend = await h.ctx.repos.outbox.pendientes(50);
+    expect(
+      pend.some(
+        (e) =>
+          e.tipo === 'EntregaConfirmada' && (e.payload as { fleteId: string }).fleteId === flete.id,
+      ),
+    ).toBe(true);
   });
 
   it('cambiarEstadoFlete de un flete inexistente lanza NotFoundError', async () => {
@@ -160,7 +321,6 @@ describe('monitoreo (integración con DynamoDB Local)', () => {
     expect(evento).toBeDefined();
 
     const segundaPasada = await detectarRetrasos(h.ctx);
-    // La misma solicitud no debe volver a contarse (idempotencia por retrasoNotificado).
     const pend2 = await h.ctx.repos.outbox.pendientes(50);
     const repetidos = pend2.filter(
       (e) =>

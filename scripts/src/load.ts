@@ -1,12 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import autocannon from 'autocannon';
 
-/**
- * Prueba de carga local (escenario del documento: 100 peticiones concurrentes).
- * Uso:
- *   pnpm test:load --url http://localhost:3000/salud --duration 30
- *   pnpm test:load --url http://localhost:3000/acopios --header "Authorization: Bearer <token>"
- */
 function arg(name: string, fallback: string): string {
   const i = process.argv.indexOf(`--${name}`);
   return i >= 0 && process.argv[i + 1] ? (process.argv[i + 1] as string) : fallback;

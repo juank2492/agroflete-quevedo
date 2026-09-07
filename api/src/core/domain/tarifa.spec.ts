@@ -10,6 +10,8 @@ import {
 const QUEVEDO = { lat: -1.0225, lon: -79.4604 };
 const GUAYAQUIL = { lat: -2.1894, lon: -79.8891 };
 const reglas: ReglasTarifa = REGLAS_TARIFA_DEFAULT;
+const factorMaiz = reglas.cultivos.find((c) => c.clave === 'maiz')!.factor;
+const factorBanano = reglas.cultivos.find((c) => c.clave === 'banano')!.factor;
 
 describe('haversineKm', () => {
   it('es 0 para el mismo punto', () => {
@@ -44,8 +46,8 @@ describe('distanciaVialKm', () => {
 
 describe('factorCultivo', () => {
   it('devuelve el factor por tipo de carga', () => {
-    expect(factorCultivo('maiz', reglas)).toBe(reglas.factorMaiz);
-    expect(factorCultivo('banano', reglas)).toBe(reglas.factorBanano);
+    expect(factorCultivo('maiz', reglas)).toBe(factorMaiz);
+    expect(factorCultivo('banano', reglas)).toBe(factorBanano);
   });
 });
 
@@ -66,7 +68,7 @@ describe('enTemporadaCosecha', () => {
 });
 
 describe('calcularTarifa', () => {
-  const fueraTemporada = new Date('2026-08-15T00:00:00Z'); // maíz fuera; banano fuera
+  const fueraTemporada = new Date('2026-08-15T00:00:00Z');
 
   it('coincide con la fórmula base fuera de temporada', () => {
     const r = calcularTarifa({
@@ -77,7 +79,7 @@ describe('calcularTarifa', () => {
       reglas,
     });
     const d = distanciaVialKm(QUEVEDO, GUAYAQUIL, reglas);
-    const esperado = Math.round(reglas.tarifaBaseKm * d * reglas.factorMaiz * 100) / 100;
+    const esperado = Math.round(reglas.tarifaBaseKm * d * factorMaiz * 100) / 100;
     expect(r.enTemporada).toBe(false);
     expect(r.tarifa).toBeCloseTo(esperado, 2);
     expect(r.distanciaKm).toBeCloseTo(Math.round(d * 100) / 100, 2);
@@ -100,9 +102,7 @@ describe('calcularTarifa', () => {
     });
     const d = distanciaVialKm(QUEVEDO, GUAYAQUIL, reglas);
     const esperado =
-      Math.round(
-        reglas.tarifaBaseKm * d * reglas.factorMaiz * (1 + reglas.recargoTemporada) * 100,
-      ) / 100;
+      Math.round(reglas.tarifaBaseKm * d * factorMaiz * (1 + reglas.recargoTemporada) * 100) / 100;
     expect(conRecargo.enTemporada).toBe(true);
     expect(conRecargo.tarifa).toBeCloseTo(esperado, 2);
     expect(conRecargo.tarifa).toBeGreaterThan(base.tarifa);

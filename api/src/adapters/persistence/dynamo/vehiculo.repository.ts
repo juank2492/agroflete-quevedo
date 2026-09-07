@@ -2,6 +2,7 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
+  ScanCommand,
   UpdateCommand,
   type DynamoDBDocumentClient,
 } from '@aws-sdk/lib-dynamodb';
@@ -78,6 +79,17 @@ export function makeVehiculoRepository(
       return (res.Items ?? []).map(fromItem);
     },
 
+    async listarTodos() {
+      const res = await doc.send(
+        new ScanCommand({
+          TableName: table,
+          FilterExpression: 'SK = :sk AND begins_with(PK, :pfx)',
+          ExpressionAttributeValues: { ':sk': SK, ':pfx': 'VEHICULO#' },
+        }),
+      );
+      return (res.Items ?? []).map(fromItem);
+    },
+
     async disponiblesEnZona(zona) {
       const res = await doc.send(
         new QueryCommand({
@@ -108,7 +120,7 @@ export function makeVehiculoRepository(
         }
       }
 
-      // Mantener el índice de disponibilidad.
+      // Mantiene el índice de disponibilidad.
       names['#g2p'] = 'gsi2pk';
       names['#g2s'] = 'gsi2sk';
       if (nuevo.estado === 'DISPONIBLE') {

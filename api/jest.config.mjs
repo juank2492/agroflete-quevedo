@@ -5,7 +5,7 @@ export default {
   testMatch: ['**/*.spec.ts'],
   moduleNameMapper: {
     '^@agroflete/shared$': '<rootDir>/../shared/src/index.ts',
-    // Permite imports con extensión .js (estilo ESM) resolviendo al .ts real.
+    // Resuelve imports .js al módulo TypeScript correspondiente.
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
   transform: {

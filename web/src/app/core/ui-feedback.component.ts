@@ -5,7 +5,7 @@ import { UiFeedbackService } from './ui-feedback.service';
   selector: 'app-ui-feedback',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="toast toast-top toast-end z-50">
+    <div class="toast toast-bottom toast-end z-50">
       @for (t of feedback.toasts(); track t.id) {
         <div
           class="alert shadow-card"

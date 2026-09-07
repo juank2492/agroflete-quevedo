@@ -12,6 +12,8 @@ import {
   type CtxDePrueba,
 } from '../../../test/dynamo-it.js';
 import { procesarOutbox } from '../../../entrypoints/worker/dispatcher.js';
+import { actualizarPerfil } from './actualizar-perfil.js';
+import { cambiarPassword } from './cambiar-password.js';
 import { confirmarUsuario } from './confirmar-usuario.js';
 import { iniciarSesion } from './iniciar-sesion.js';
 import { obtenerPerfil } from './obtener-perfil.js';
@@ -133,5 +135,52 @@ describe('identidad (integración con DynamoDB Local)', () => {
   it('obtenerPerfil de un id inexistente lanza NotFoundError', async () => {
     if (!disponible) return;
     await expect(obtenerPerfil(harness.ctx, 'no-existe')).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it('actualizarPerfil cambia nombre y teléfono (email y rol intactos)', async () => {
+    if (!disponible) return;
+    await registrarUsuario(harness.ctx, correoDe('ana6@finca.ec'));
+    const u = await harness.ctx.repos.usuarios.porEmail('ana6@finca.ec');
+    await confirmarUsuario(harness.ctx, { email: 'ana6@finca.ec', codigo: u!.codigoConf! });
+
+    const p = await actualizarPerfil(harness.ctx, u!.id, {
+      nombreCompleto: 'Ana María Pérez',
+      telefono: '0991112233',
+    });
+    expect(p.nombreCompleto).toBe('Ana María Pérez');
+    expect(p.telefono).toBe('0991112233');
+    expect(p.email).toBe('ana6@finca.ec');
+    expect(p.rol).toBe('productor');
+
+    const guardado = await harness.ctx.repos.usuarios.porId(u!.id);
+    expect(guardado?.nombreCompleto).toBe('Ana María Pérez');
+  });
+
+  it('cambiarPassword exige la actual y luego permite iniciar sesión con la nueva', async () => {
+    if (!disponible) return;
+    await registrarUsuario(harness.ctx, correoDe('ana7@finca.ec'));
+    const u = await harness.ctx.repos.usuarios.porEmail('ana7@finca.ec');
+    await confirmarUsuario(harness.ctx, { email: 'ana7@finca.ec', codigo: u!.codigoConf! });
+
+    await expect(
+      cambiarPassword(harness.ctx, u!.id, {
+        passwordActual: 'noEsLaActual1',
+        passwordNueva: 'NuevaClave2027',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+
+    await cambiarPassword(harness.ctx, u!.id, {
+      passwordActual: base.password,
+      passwordNueva: 'NuevaClave2027',
+    });
+
+    await expect(
+      iniciarSesion(harness.ctx, { email: 'ana7@finca.ec', password: base.password }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    const { perfil } = await iniciarSesion(harness.ctx, {
+      email: 'ana7@finca.ec',
+      password: 'NuevaClave2027',
+    });
+    expect(perfil.email).toBe('ana7@finca.ec');
   });
 });

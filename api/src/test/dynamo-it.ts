@@ -6,14 +6,18 @@ import {
   waitUntilTableExists,
 } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import { haversineKm } from '@agroflete/shared';
 import type { AppContext } from '../core/app-context.js';
+import type { GeocodingPort, RoutingPort } from '../core/ports/geo.js';
 import type { Clock, Notifier } from '../core/ports/services.js';
 import { makeLocalTokenService } from '../adapters/auth/local-jwt/token.service.js';
 import { bcryptHasher } from '../adapters/auth/local-jwt/password.hasher.js';
 import { makeOutboxEventBus } from '../adapters/events/local-outbox/event-bus.js';
 import { makeAcopioRepository } from '../adapters/persistence/dynamo/acopio.repository.js';
+import { makeInventarioRepository } from '../adapters/persistence/dynamo/inventario.repository.js';
 import { makeFleteRepository } from '../adapters/persistence/dynamo/flete.repository.js';
 import { makeOutboxRepository } from '../adapters/persistence/dynamo/outbox.repository.js';
+import { makeAjustesRepository } from '../adapters/persistence/dynamo/ajustes.repository.js';
 import { makeReglasTarifaRepository } from '../adapters/persistence/dynamo/reglas-tarifa.repository.js';
 import { makeSolicitudRepository } from '../adapters/persistence/dynamo/solicitud.repository.js';
 import { makeUsuarioRepository } from '../adapters/persistence/dynamo/usuario.repository.js';
@@ -29,8 +33,6 @@ const raw = new DynamoDBClient({
   credentials: { accessKeyId: 'local', secretAccessKey: 'local' },
 });
 
-// Cliente de sondeo con fallo rápido: si el emulador no está, no queremos que
-// el SDK reintente con backoff y ralentice toda la suite.
 const probe = new DynamoDBClient({
   endpoint: ENDPOINT,
   region: 'local',
@@ -79,7 +81,7 @@ export async function borrarTablaTest(nombre: string): Promise<void> {
   try {
     await raw.send(new DeleteTableCommand({ TableName: nombre }));
   } catch {
-    /* no existía */
+    // La tabla puede no existir todavía.
   }
 }
 
@@ -87,6 +89,25 @@ export interface CtxDePrueba {
   ctx: AppContext;
   correos: Array<{ to: string; subject: string; text: string }>;
 }
+
+/** Routing determinista para pruebas: recta de dos puntos, sin red. */
+const routingDePrueba: RoutingPort = {
+  async calcularRuta(origen, destino) {
+    return {
+      geometria: [origen, destino],
+      distanciaKm: Math.round(haversineKm(origen, destino) * 1.3 * 100) / 100,
+      duracionMin: 20,
+      aproximada: true,
+    };
+  },
+};
+
+/** Geocodificación vacía en pruebas (los casos que la necesiten inyectan la suya). */
+const geocodingDePrueba: GeocodingPort = {
+  async buscar() {
+    return [];
+  },
+};
 
 /** Reloj fijo, útil para crear datos "del pasado" en pruebas de retrasos. */
 export function relojFijo(iso: string): Clock {
@@ -110,16 +131,25 @@ export function contextoDePrueba(tabla: string, clock: Clock = systemClock): Ctx
     logger,
     clock,
     ids: idGenerator,
-    config: { confCodeTtlMs: 15 * 60_000, retrasoUmbralHoras: 6 },
+    config: {
+      confCodeTtlMs: 15 * 60_000,
+      retrasoUmbralHoras: 6,
+      adminEmail: 'admin@agroflete.ec',
+      geocercaAcopioM: 300,
+    },
     tokens: makeLocalTokenService('secreto-it-1234567890', '1h'),
     hasher: bcryptHasher,
     events: makeOutboxEventBus({ outbox, ids: idGenerator, clock }),
     notifier,
+    geocoding: geocodingDePrueba,
+    routing: routingDePrueba,
     repos: {
       usuarios: makeUsuarioRepository(doc, tabla),
       outbox,
       acopios: makeAcopioRepository(doc, tabla),
+      inventario: makeInventarioRepository(doc, tabla),
       reglas: makeReglasTarifaRepository(doc, tabla),
+      ajustes: makeAjustesRepository(doc, tabla),
       solicitudes: makeSolicitudRepository(doc, tabla),
       vehiculos: makeVehiculoRepository(doc, tabla),
       fletes: makeFleteRepository(doc, tabla),

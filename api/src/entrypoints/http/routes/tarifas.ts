@@ -1,6 +1,7 @@
 import { actualizarReglasRequestSchema, estimacionTarifaRequestSchema } from '@agroflete/shared';
 import { estimarTarifa } from '../../../core/application/tarifas/estimar-tarifa.js';
 import { listarAcopios } from '../../../core/application/tarifas/listar-acopios.js';
+import { listarCultivos } from '../../../core/application/tarifas/listar-cultivos.js';
 import {
   actualizarReglasTarifa,
   obtenerReglasTarifa,
@@ -14,6 +15,11 @@ export const tarifasRoutes: RouteDef[] = [
     method: 'GET',
     path: '/acopios',
     handler: async (_req, ctx) => ok(await listarAcopios(ctx)),
+  },
+  {
+    method: 'GET',
+    path: '/cultivos',
+    handler: async (_req, ctx) => ok(await listarCultivos(ctx)),
   },
   {
     method: 'GET',

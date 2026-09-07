@@ -71,8 +71,12 @@ export class AdminShellComponent {
   protected readonly nav: NavItem[] = [
     { path: 'solicitudes', label: 'Solicitudes', icon: 'leaf' },
     { path: 'fletes', label: 'Fletes', icon: 'truck' },
+    { path: 'flota', label: 'Flota', icon: 'users' },
+    { path: 'inventario', label: 'Inventario', icon: 'box' },
     { path: 'tarifas', label: 'Tarifas', icon: 'chart' },
     { path: 'metricas', label: 'Métricas', icon: 'chart' },
+    { path: 'ajustes', label: 'Ajustes', icon: 'sliders' },
+    { path: 'perfil', label: 'Mi perfil', icon: 'user' },
   ];
 
   salir(): void {

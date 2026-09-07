@@ -1,0 +1,1012 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Prototipo · Seguimiento del flete (vista productor)</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    :root {
+      --verde-700: #1f7a45;
+      --verde-500: #2f9e5e;
+      --verde-300: #54c787;
+      --tinta: #0f2417;
+      --superficie: #f6f8f3;
+      --azul-camion: #2563eb;
+      --gris: #64748b;
+      --ambar: #d97706;
+      --rojo: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--tinta);
+      background: var(--superficie);
+    }
+    .wrap {
+      max-width: 460px;
+      margin: 0 auto;
+      padding: 16px 14px 40px;
+    }
+    header h1 {
+      font-size: 1.15rem;
+      margin: 0 0 2px;
+    }
+    header p {
+      margin: 0 0 14px;
+      font-size: 0.8rem;
+      color: #5b6b60;
+    }
+
+    .panel {
+      background: #fff;
+      border: 1px solid #e2e8e0;
+      border-radius: 16px;
+      padding: 14px;
+      margin-bottom: 14px;
+      box-shadow: 0 8px 24px -16px rgb(31 122 69 / 0.35);
+    }
+    .panel h2 {
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #6b7c70;
+      margin: 0 0 10px;
+    }
+
+    label.campo {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    input[type="text"],
+    select {
+      width: 100%;
+      padding: 9px 10px;
+      border: 1px solid #cbd5d1;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-family: inherit;
+      background: #fff;
+    }
+    input[type="text"]:focus,
+    select:focus {
+      outline: 2px solid var(--verde-300);
+      border-color: var(--verde-500);
+    }
+    .fila {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    button {
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border: 0;
+      border-radius: 999px;
+      padding: 9px 14px;
+      cursor: pointer;
+      background: #e8efe9;
+      color: var(--verde-700);
+      transition: filter 0.15s;
+    }
+    button:hover:not(:disabled) { filter: brightness(0.95); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.primario {
+      background: var(--verde-500);
+      color: #fff;
+    }
+    button.azul {
+      background: var(--azul-camion);
+      color: #fff;
+    }
+    .ancho { flex: 1; }
+
+    .sugerencias {
+      position: relative;
+    }
+    .sugerencias ul {
+      position: absolute;
+      z-index: 1200;
+      left: 0;
+      right: 0;
+      margin: 4px 0 0;
+      padding: 4px;
+      list-style: none;
+      background: #fff;
+      border: 1px solid #cbd5d1;
+      border-radius: 12px;
+      box-shadow: 0 12px 28px -12px rgb(15 36 23 / 0.35);
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    .sugerencias li {
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .sugerencias li:hover,
+    .sugerencias li[aria-selected="true"] {
+      background: #eef5ef;
+    }
+    .sugerencias li.msg {
+      color: #7a8a80;
+      cursor: default;
+      font-size: 0.8rem;
+      line-height: 1.4;
+    }
+    .sugerencias li.msg:hover { background: transparent; }
+    .sugerencias li small {
+      display: block;
+      color: #7a8a80;
+      font-size: 0.75rem;
+      margin-top: 1px;
+    }
+    .sugerencias li .tag {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 1px 7px;
+      border-radius: 999px;
+      background: #eef5ef;
+      color: var(--verde-700);
+      font-size: 0.66rem;
+      font-weight: 700;
+      text-transform: lowercase;
+      vertical-align: middle;
+    }
+    .sugerencias[hidden] { display: none; }
+
+    #mapa {
+      height: 340px;
+      width: 100%;
+      border-radius: 14px;
+      border: 1px solid #d6e0d8;
+      z-index: 0;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .stat {
+      background: #f3f7f3;
+      border-radius: 12px;
+      padding: 10px 8px;
+      text-align: center;
+    }
+    .stat .n {
+      font-size: 1rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat .k {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: #7a8a80;
+      margin-top: 2px;
+    }
+
+    .barra {
+      margin-top: 12px;
+      height: 8px;
+      background: #e2e8e0;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .barra > i {
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--verde-500), var(--verde-300));
+      transition: width 0.4s ease;
+    }
+
+    .estado-linea {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 12px;
+      font-size: 0.82rem;
+    }
+    .pastilla {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      background: #e8efe9;
+      color: var(--verde-700);
+    }
+    .pastilla.debil { background: #fef1e0; color: var(--ambar); }
+    .pastilla.viva { background: #e4f5ec; color: var(--verde-700); }
+    .pastilla.off { background: #f1f5f9; color: var(--gris); }
+    .punto {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+    @keyframes latido {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .pastilla.viva .punto { animation: latido 1.4s infinite; }
+
+    .aviso {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      display: none;
+    }
+    .aviso.ok {
+      display: block;
+      background: #e4f5ec;
+      color: var(--verde-700);
+      border: 1px solid var(--verde-300);
+    }
+    .aviso.warn {
+      display: block;
+      background: #fef1e0;
+      color: var(--ambar);
+      border: 1px solid #f5c98a;
+    }
+
+    .nota {
+      font-size: 0.75rem;
+      color: #7a8a80;
+      margin-top: 10px;
+      line-height: 1.5;
+    }
+
+    .camion-icono {
+      display: grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      background: var(--azul-camion);
+      border: 2px solid #fff;
+      box-shadow: 0 3px 10px rgb(37 99 235 / 0.5);
+      transition: transform 0.5s linear;
+    }
+    .camion-icono svg { width: 20px; height: 20px; fill: #fff; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Seguimiento del flete</h1>
+      <p>Prototipo · lo que ve el <strong>productor</strong> mientras su cosecha viaja al acopio.</p>
+    </header>
+
+    <div class="panel">
+      <h2>Datos del viaje</h2>
+
+      <label class="campo" for="origenTxt">Origen · dónde está la cosecha (lo da el productor)</label>
+      <div class="sugerencias">
+        <input
+          id="origenTxt"
+          type="text"
+          placeholder="Escribe una dirección o usa tu ubicación…"
+          autocomplete="off"
+        />
+        <ul id="listaSug" role="listbox" hidden></ul>
+      </div>
+      <div class="fila">
+        <button id="btnGps" class="ancho">📍 Usar mi ubicación</button>
+        <button id="btnLimpiar">Limpiar</button>
+      </div>
+
+      <label class="campo" for="acopioSel" style="margin-top: 14px">Destino · centro de acopio asignado</label>
+      <select id="acopioSel">
+        <option value="-1.0225,-79.4604">Acopio Quevedo Centro</option>
+        <option value="-1.0489,-79.4636">Acopio San Camilo</option>
+        <option value="-1.1897,-79.5303">Acopio Mocache</option>
+        <option value="-0.8944,-79.4900">Acopio Buena Fe</option>
+      </select>
+
+      <div class="fila">
+        <button id="btnRuta" class="primario ancho" disabled>Calcular ruta</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>En camino al acopio</h2>
+      <div id="mapa"></div>
+
+      <div class="stats">
+        <div class="stat"><div class="n" id="stDist">—</div><div class="k">Distancia</div></div>
+        <div class="stat"><div class="n" id="stEta">—</div><div class="k">Llega ~</div></div>
+        <div class="stat"><div class="n" id="stRest">—</div><div class="k">Restante</div></div>
+      </div>
+
+      <div class="barra"><i id="barra"></i></div>
+
+      <div class="estado-linea">
+        <span class="pastilla off" id="pastSenal"><span class="punto"></span> Sin señal</span>
+        <span id="txtSenal" style="color: #7a8a80">El transportista aún no sale del origen.</span>
+      </div>
+
+      <div class="aviso" id="aviso"></div>
+
+      <div class="fila">
+        <button id="btnSim" class="azul ancho" disabled>▶ Simular viaje</button>
+        <button id="btnGpsReal" disabled>📡 GPS real</button>
+      </div>
+
+      <p class="nota">
+        La línea sigue la <strong>carretera</strong> (servicio OSRM, gratuito). El camión se mueve sobre
+        ella; cuando entra al radio del acopio, la entrega se marca como <strong>confirmada</strong>
+        automáticamente. «Simular viaje» sirve para probarlo desde el escritorio; «GPS real» usa el
+        GPS de este dispositivo.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const FACTOR_SINUOSIDAD = 1.3;
+    const RADIO_ACOPIO_M = 300;      // geocerca de llegada
+    const SIM_DURACION_MS = 30_000;  // el viaje simulado dura ~30 s
+    const SIN_SENAL_MS = 30_000;     // sin dato > 30 s => señal débil
+
+    let origen = null;    // { lat, lon, etiqueta }
+    let destino = null;   // { lat, lon }
+    let rutaLatLng = [];  // [[lat,lon], ...] geometría de la ruta (OSRM o recta)
+    let rutaMeta = null;  // { distanciaM, duracionS, aproximada }
+    let acumuladas = [];  // distancias acumuladas por vértice de la ruta
+    let rastro = [];      // [[lat,lon], ...] posiciones recibidas del camión
+    let ultimoFix = 0;
+    let llego = false;
+
+    let simRAF = null;
+    let simInicio = 0;
+    let gpsWatch = null;
+
+    const map = L.map("mapa", { zoomControl: true }).setView([-1.03, -79.47], 11);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: "© OpenStreetMap",
+    }).addTo(map);
+
+    const capaRuta = L.layerGroup().addTo(map);   // línea de carretera
+    const capaRastro = L.layerGroup().addTo(map); // recorrido real
+    const capaPuntos = L.layerGroup().addTo(map); // origen / destino / camión
+
+    let lineaRuta = null;
+    let lineaRastro = null;
+    let marcaOrigen = null;
+    let marcaDestino = null;
+    let marcaCamion = null;
+    let circuloAcopio = null;
+
+    const iconoCamion = (rumbo) =>
+      L.divIcon({
+        className: "",
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+        html:
+          '<div class="camion-icono" style="transform: rotate(' + (rumbo || 0) + 'deg)">' +
+          '<svg viewBox="0 0 24 24"><path d="M3 6a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v3h3.5a1 1 0 0 1 .8.4l2.5 3.3a1 1 0 0 1 .2.6V17a1 1 0 0 1-1 1h-1a2.5 2.5 0 0 1-5 0H10a2.5 2.5 0 0 1-5 0H4a1 1 0 0 1-1-1V6Zm11 4v4h6v-1.3L17.8 10H14ZM6.5 16.2A1 1 0 1 0 8 17.5 1 1 0 0 0 6.5 16.2Zm9 0A1 1 0 1 0 17 17.5 1 1 0 0 0 15.5 16.2Z"/></svg>' +
+          "</div>",
+      });
+
+    const rad = (d) => (d * Math.PI) / 180;
+    function haversineM(a, b) {
+      const R = 6_371_000;
+      const dLat = rad(b[0] - a[0]);
+      const dLon = rad(b[1] - a[1]);
+      const h =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(h));
+    }
+    function rumboGrados(a, b) {
+      const y = Math.sin(rad(b[1] - a[1])) * Math.cos(rad(b[0]));
+      const x =
+        Math.cos(rad(a[0])) * Math.sin(rad(b[0])) -
+        Math.sin(rad(a[0])) * Math.cos(rad(b[0])) * Math.cos(rad(b[1] - a[1]));
+      return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+    }
+    function fmtKm(m) {
+      if (m == null) return "—";
+      return m < 1000 ? Math.round(m) + " m" : (m / 1000).toFixed(1) + " km";
+    }
+    function fmtMin(s) {
+      if (!s) return "—";
+      const min = Math.max(1, Math.round(s / 60));
+      if (min < 60) return min + " min";
+      const h = Math.floor(min / 60);
+      const r = min % 60;
+      return r ? h + " h " + r + " min" : h + " h";
+    }
+    function fmtReloj(fecha) {
+      return fecha.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+
+    const els = {
+      origenTxt: document.getElementById("origenTxt"),
+      lista: document.getElementById("listaSug"),
+      contLista: document.querySelector(".sugerencias"),
+      btnGps: document.getElementById("btnGps"),
+      btnLimpiar: document.getElementById("btnLimpiar"),
+      acopio: document.getElementById("acopioSel"),
+      btnRuta: document.getElementById("btnRuta"),
+      btnSim: document.getElementById("btnSim"),
+      btnGpsReal: document.getElementById("btnGpsReal"),
+      stDist: document.getElementById("stDist"),
+      stEta: document.getElementById("stEta"),
+      stRest: document.getElementById("stRest"),
+      barra: document.getElementById("barra"),
+      pastSenal: document.getElementById("pastSenal"),
+      txtSenal: document.getElementById("txtSenal"),
+      aviso: document.getElementById("aviso"),
+    };
+
+    let debounce = null;
+    let sugerencias = [];
+    let sugSel = -1;
+    let buscaSeq = 0;
+    let abortActual = null;
+    const cacheGeo = new Map(); // texto -> resultados
+
+    els.origenTxt.addEventListener("input", () => {
+      const q = els.origenTxt.value.trim();
+      clearTimeout(debounce);
+      if (q.length < 3) return cerrarSug();
+      const cacheado = cacheGeo.get(q.toLowerCase());
+      if (cacheado) {
+        sugerencias = cacheado;
+        sugerencias.length ? pintarSug() : mostrarMensajeSug("Sin resultados para “" + q + "”.");
+        return;
+      }
+      mostrarMensajeSug("Buscando “" + q + "”…");
+      debounce = setTimeout(() => buscarDirecciones(q), 250);
+    });
+    els.origenTxt.addEventListener("keydown", (e) => {
+      if (els.lista.hidden || !sugerencias.length) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        sugSel = (sugSel + 1) % sugerencias.length;
+        pintarSug();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        sugSel = (sugSel - 1 + sugerencias.length) % sugerencias.length;
+        pintarSug();
+      } else if (e.key === "Enter" && sugSel >= 0) {
+        e.preventDefault();
+        elegirSug(sugSel);
+      } else if (e.key === "Escape") {
+        cerrarSug();
+      }
+    });
+    els.origenTxt.addEventListener("blur", () => setTimeout(cerrarSug, 150));
+
+    function mostrarMensajeSug(txt) {
+      els.lista.innerHTML = "";
+      const li = document.createElement("li");
+      li.className = "msg";
+      li.textContent = txt;
+      els.lista.appendChild(li);
+      els.lista.hidden = false;
+    }
+
+    function etiquetaTipo(pr) {
+      const k = pr.osm_key;
+      const v = pr.osm_value;
+      const t = pr.type;
+      const mapa = {
+        park: "parque",
+        pitch: "cancha",
+        stadium: "estadio",
+        school: "escuela",
+        university: "universidad",
+        hospital: "hospital",
+        clinic: "clínica",
+        pharmacy: "farmacia",
+        bank: "banco",
+        marketplace: "mercado",
+        supermarket: "supermercado",
+        fuel: "gasolinera",
+        restaurant: "restaurante",
+        hotel: "hotel",
+        church: "iglesia",
+        townhall: "municipio",
+        police: "policía",
+        bus_station: "terminal",
+      };
+      if (mapa[v]) return mapa[v];
+      if (k === "highway") return "calle";
+      if (k === "shop") return "comercio";
+      if (k === "building") return "edificio";
+      if (t === "house") return "dirección";
+      if (t === "street") return "calle";
+      if (t === "locality" || t === "district" || t === "suburb" || t === "neighbourhood")
+        return "barrio";
+      if (t === "city" || t === "town" || t === "village") return "ciudad";
+      return v || k || "lugar";
+    }
+
+    function segundaLinea(campos) {
+      const vistos = new Set();
+      return campos
+        .filter((c) => c && !vistos.has(c) && vistos.add(c))
+        .join(", ");
+    }
+
+    const QUEVEDO = [-1.03, -79.46];
+    const BBOX_MIN_LON = -79.95;
+    const BBOX_MIN_LAT = -1.55;
+    const BBOX_MAX_LON = -79.05;
+    const BBOX_MAX_LAT = -0.55;
+    const MAX_KM_RESULTADO = 90;
+
+    async function pedirPhoton(q, signal) {
+      // OJO: Photon solo acepta lang = de | en | fr. NO enviar 'es' (da 400).
+      const p = new URLSearchParams({ q, limit: "10" });
+      p.set("lat", "-1.03"); // ordena por cercanía
+      p.set("lon", "-79.46");
+      p.set("bbox", [BBOX_MIN_LON, BBOX_MIN_LAT, BBOX_MAX_LON, BBOX_MAX_LAT].join(","));
+      const r = await fetch("https://photon.komoot.io/api/?" + p.toString(), { signal });
+      if (!r.ok) throw new Error("Photon " + r.status);
+      const data = await r.json();
+      return (data.features || [])
+        .filter((f) => f.geometry && Array.isArray(f.geometry.coordinates))
+        .map((f) => {
+          const [lon, lat] = f.geometry.coordinates;
+          const pr = f.properties || {};
+          const titulo = pr.name || pr.street || pr.city || "Ubicación";
+          const detalle = segundaLinea([
+            pr.name ? pr.street : null,
+            pr.housenumber,
+            pr.district,
+            pr.city,
+            pr.state,
+          ]);
+          return { lat, lon, titulo, detalle, tipo: etiquetaTipo(pr) };
+        });
+    }
+
+    async function pedirNominatim(q, signal) {
+      const p = new URLSearchParams({
+        format: "jsonv2",
+        q,
+        limit: "10",
+        addressdetails: "1",
+        "accept-language": "es",
+        bounded: "1", // RESTRINGE al viewbox
+        viewbox: [BBOX_MIN_LON, BBOX_MAX_LAT, BBOX_MAX_LON, BBOX_MIN_LAT].join(","),
+      });
+      const r = await fetch("https://nominatim.openstreetmap.org/search?" + p.toString(), { signal });
+      if (!r.ok) throw new Error("Nominatim " + r.status);
+      const data = await r.json();
+      return (data || []).map((d) => {
+        const a = d.address || {};
+        return {
+          lat: Number(d.lat),
+          lon: Number(d.lon),
+          titulo: d.name || (d.display_name || "").split(",")[0] || "Ubicación",
+          detalle: segundaLinea([a.road, a.suburb, a.city || a.town || a.village, a.state]),
+          tipo: etiquetaTipo({ osm_key: d.category, osm_value: d.type, type: d.addresstype }),
+        };
+      });
+    }
+
+    function ordenarPorCercania(lista) {
+      return lista
+        .map((s) => ({ ...s, km: haversineM([s.lat, s.lon], QUEVEDO) / 1000 }))
+        .filter((s) => s.km <= MAX_KM_RESULTADO)
+        .sort((a, b) => a.km - b.km);
+    }
+
+    async function buscarDirecciones(q) {
+      const seq = ++buscaSeq;
+      if (abortActual) abortActual.abort();
+      abortActual = new AbortController();
+      const signal = abortActual.signal;
+      try {
+        let res;
+        try {
+          res = await pedirPhoton(q, signal);
+        } catch (e1) {
+          if (e1.name === "AbortError") return;
+          console.warn("Photon falló, pruebo Nominatim:", e1);
+          res = await pedirNominatim(q, signal);
+        }
+        if (seq !== buscaSeq) return; // ya hay una búsqueda más nueva
+        res = ordenarPorCercania(res);
+        cacheGeo.set(q.toLowerCase(), res);
+        sugerencias = res;
+        if (!sugerencias.length) {
+          mostrarMensajeSug("Sin resultados cerca de Quevedo para “" + q + "”.");
+          return;
+        }
+        pintarSug();
+      } catch (err) {
+        if (err.name === "AbortError") return;
+        console.warn(err);
+        if (seq !== buscaSeq) return;
+        mostrarMensajeSug(
+          "No se pudo buscar direcciones. Si abriste el archivo con doble clic, " +
+            "sírvelo con:  pnpm dlx serve web/prototipos",
+        );
+      }
+    }
+
+    function pintarSug() {
+      els.lista.innerHTML = "";
+      if (!sugerencias.length) return cerrarSug();
+      const esc = (t) =>
+        String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      sugerencias.forEach((s, i) => {
+        const li = document.createElement("li");
+        li.setAttribute("role", "option");
+        li.setAttribute("aria-selected", String(i === sugSel));
+        const km = s.km != null ? (s.km < 1 ? "aquí mismo" : "a " + s.km.toFixed(s.km < 10 ? 1 : 0) + " km") : "";
+        const sub = [esc(s.detalle), km].filter(Boolean).join(" · ");
+        li.innerHTML =
+          "<strong>" + esc(s.titulo) + "</strong>" +
+          (s.tipo ? '<span class="tag">' + esc(s.tipo) + "</span>" : "") +
+          (sub ? "<small>" + sub + "</small>" : "");
+        li.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          elegirSug(i);
+        });
+        els.lista.appendChild(li);
+      });
+      els.lista.hidden = false;
+    }
+    function cerrarSug() {
+      els.lista.hidden = true;
+      sugSel = -1;
+    }
+    function elegirSug(i) {
+      const s = sugerencias[i];
+      if (!s) return;
+      els.origenTxt.value = s.titulo + (s.detalle ? " · " + s.detalle : "");
+      fijarOrigen({ lat: s.lat, lon: s.lon, etiqueta: s.titulo });
+      cerrarSug();
+    }
+
+    function fijarOrigen(o) {
+      origen = o;
+      if (marcaOrigen) capaPuntos.removeLayer(marcaOrigen);
+      marcaOrigen = L.circleMarker([o.lat, o.lon], {
+        radius: 8,
+        color: "#fff",
+        weight: 2,
+        fillColor: "#64748b",
+        fillOpacity: 1,
+      })
+        .bindTooltip("Origen · cosecha")
+        .addTo(capaPuntos);
+      map.setView([o.lat, o.lon], 12);
+      refrescarBotones();
+    }
+
+    function fijarDestino() {
+      const [lat, lon] = els.acopio.value.split(",").map(Number);
+      destino = { lat, lon };
+      if (marcaDestino) capaPuntos.removeLayer(marcaDestino);
+      if (circuloAcopio) capaPuntos.removeLayer(circuloAcopio);
+      marcaDestino = L.circleMarker([lat, lon], {
+        radius: 8,
+        color: "#fff",
+        weight: 2,
+        fillColor: "#2f9e5e",
+        fillOpacity: 1,
+      })
+        .bindTooltip("Destino · " + els.acopio.selectedOptions[0].textContent)
+        .addTo(capaPuntos);
+      circuloAcopio = L.circle([lat, lon], {
+        radius: RADIO_ACOPIO_M,
+        color: "#2f9e5e",
+        weight: 1,
+        fillColor: "#2f9e5e",
+        fillOpacity: 0.08,
+      }).addTo(capaPuntos);
+      refrescarBotones();
+    }
+
+    els.acopio.addEventListener("change", fijarDestino);
+
+    els.btnGps.addEventListener("click", () => {
+      if (!navigator.geolocation) return alert("Este navegador no da ubicación.");
+      els.btnGps.textContent = "Ubicando…";
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          els.btnGps.textContent = "📍 Usar mi ubicación";
+          els.origenTxt.value = "Mi ubicación actual";
+          fijarOrigen({ lat: pos.coords.latitude, lon: pos.coords.longitude, etiqueta: "Mi ubicación" });
+        },
+        () => {
+          els.btnGps.textContent = "📍 Usar mi ubicación";
+          alert("No se pudo obtener la ubicación.");
+        },
+        { enableHighAccuracy: true, timeout: 8000 },
+      );
+    });
+
+    els.btnLimpiar.addEventListener("click", () => {
+      origen = null;
+      els.origenTxt.value = "";
+      if (marcaOrigen) capaPuntos.removeLayer(marcaOrigen);
+      marcaOrigen = null;
+      limpiarRuta();
+      refrescarBotones();
+    });
+
+    function refrescarBotones() {
+      els.btnRuta.disabled = !(origen && destino);
+    }
+
+    els.btnRuta.addEventListener("click", calcularRuta);
+
+    async function calcularRuta() {
+      if (!origen || !destino) return;
+      limpiarRuta();
+      els.btnRuta.disabled = true;
+      els.btnRuta.textContent = "Calculando…";
+
+      const coords = origen.lon + "," + origen.lat + ";" + destino.lon + "," + destino.lat;
+      const url =
+        "https://router.project-osrm.org/route/v1/driving/" +
+        coords +
+        "?overview=full&geometries=geojson";
+
+      try {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error("OSRM " + r.status);
+        const data = await r.json();
+        if (data.code !== "Ok" || !data.routes || !data.routes.length) throw new Error("sin ruta");
+        const ru = data.routes[0];
+        rutaLatLng = ru.geometry.coordinates.map(([lon, lat]) => [lat, lon]);
+        rutaMeta = { distanciaM: ru.distance, duracionS: ru.duration, aproximada: false };
+        avisar("");
+      } catch (err) {
+        console.warn("OSRM no disponible, uso línea recta:", err);
+        rutaLatLng = [
+          [origen.lat, origen.lon],
+          [destino.lat, destino.lon],
+        ];
+        const d = haversineM(rutaLatLng[0], rutaLatLng[1]) * FACTOR_SINUOSIDAD;
+        rutaMeta = { distanciaM: d, duracionS: (d / 1000 / 45) * 3600, aproximada: true };
+        avisar("warn", "Servicio de rutas no disponible: se muestra una ruta aproximada (línea recta × 1.3).");
+      }
+
+      acumuladas = [0];
+      for (let i = 1; i < rutaLatLng.length; i++) {
+        acumuladas.push(acumuladas[i - 1] + haversineM(rutaLatLng[i - 1], rutaLatLng[i]));
+      }
+
+      lineaRuta = L.polyline(rutaLatLng, {
+        color: "#1f7a45",
+        weight: 5,
+        opacity: 0.85,
+        lineCap: "round",
+      }).addTo(capaRuta);
+      map.fitBounds(lineaRuta.getBounds().pad(0.18));
+
+      els.stDist.textContent = fmtKm(rutaMeta.distanciaM);
+      els.stRest.textContent = fmtKm(rutaMeta.distanciaM);
+      els.stEta.textContent = fmtReloj(new Date(Date.now() + rutaMeta.duracionS * 1000));
+      els.barra.style.width = "0%";
+
+      els.btnRuta.disabled = false;
+      els.btnRuta.textContent = "Recalcular ruta";
+      els.btnSim.disabled = false;
+      els.btnGpsReal.disabled = false;
+    }
+
+    function limpiarRuta() {
+      detenerSim();
+      detenerGpsReal();
+      capaRuta.clearLayers();
+      capaRastro.clearLayers();
+      if (marcaCamion) capaPuntos.removeLayer(marcaCamion);
+      marcaCamion = null;
+      lineaRuta = lineaRastro = null;
+      rutaLatLng = [];
+      acumuladas = [];
+      rastro = [];
+      llego = false;
+      ultimoFix = 0;
+      els.stDist.textContent = els.stEta.textContent = els.stRest.textContent = "—";
+      els.barra.style.width = "0%";
+      setSenal("off", "El transportista aún no sale del origen.");
+      avisar("");
+      els.btnSim.disabled = els.btnGpsReal.disabled = true;
+      els.btnSim.textContent = "▶ Simular viaje";
+    }
+
+    function moverCamion(lat, lon, rumbo) {
+      const p = [lat, lon];
+      ultimoFix = Date.now();
+
+      if (!marcaCamion) {
+        marcaCamion = L.marker(p, { icon: iconoCamion(rumbo), zIndexOffset: 1000 }).addTo(capaPuntos);
+      } else {
+        marcaCamion.setLatLng(p);
+        marcaCamion.setIcon(iconoCamion(rumbo));
+      }
+
+      rastro.push(p);
+      if (lineaRastro) capaRastro.removeLayer(lineaRastro);
+      lineaRastro = L.polyline(rastro, {
+        color: "#64748b",
+        weight: 3,
+        opacity: 0.7,
+        dashArray: "1 6",
+      }).addTo(capaRastro);
+
+      const restante = distanciaRestante(p);
+      const total = rutaMeta.distanciaM || 1;
+      const prog = Math.min(1, Math.max(0, 1 - restante / total));
+      els.barra.style.width = Math.round(prog * 100) + "%";
+      els.stRest.textContent = fmtKm(restante);
+
+      const velKmh = 45; // referencia para ETA cuando no hay velocidad real
+      const segRest = (restante / 1000 / velKmh) * 3600;
+      els.stEta.textContent = fmtReloj(new Date(Date.now() + segRest * 1000));
+
+      setSenal("viva", "Señal en vivo · " + fmtKm(restante) + " para llegar.");
+
+      // geocerca de llegada
+      const dAcopio = haversineM(p, [destino.lat, destino.lon]);
+      if (!llego && dAcopio <= RADIO_ACOPIO_M) {
+        llego = true;
+        els.barra.style.width = "100%";
+        els.stRest.textContent = "0 m";
+        avisar("ok", "✅ El camión llegó al acopio. Entrega confirmada automáticamente (" +
+          fmtReloj(new Date()) + ").");
+        setSenal("viva", "Llegó al destino.");
+        detenerSim();
+        detenerGpsReal();
+      }
+    }
+
+    function distanciaRestante(p) {
+      let mejorI = 0;
+      let mejorD = Infinity;
+      for (let i = 0; i < rutaLatLng.length; i++) {
+        const d = haversineM(p, rutaLatLng[i]);
+        if (d < mejorD) {
+          mejorD = d;
+          mejorI = i;
+        }
+      }
+      const totalRuta = acumuladas[acumuladas.length - 1] || 0;
+      return Math.max(0, totalRuta - acumuladas[mejorI]) + mejorD;
+    }
+
+    els.btnSim.addEventListener("click", () => {
+      if (simRAF) {
+        detenerSim();
+        els.btnSim.textContent = "▶ Simular viaje";
+        return;
+      }
+      if (!rutaLatLng.length) return;
+      llego = false;
+      avisar("");
+      rastro = [];
+      capaRastro.clearLayers();
+      els.btnSim.textContent = "■ Detener simulación";
+      simInicio = performance.now();
+      const total = acumuladas[acumuladas.length - 1] || 1;
+
+      const tick = (t) => {
+        const prog = Math.min(1, (t - simInicio) / SIM_DURACION_MS);
+        const objetivo = total * prog;
+        const { lat, lon, rumbo } = puntoEnRuta(objetivo);
+        moverCamion(lat, lon, rumbo);
+        if (prog >= 1 || llego) {
+          detenerSim();
+          els.btnSim.textContent = "↻ Repetir simulación";
+          return;
+        }
+        simRAF = requestAnimationFrame(tick);
+      };
+      simRAF = requestAnimationFrame(tick);
+    });
+
+    function detenerSim() {
+      if (simRAF) cancelAnimationFrame(simRAF);
+      simRAF = null;
+    }
+
+    function puntoEnRuta(distObjetivo) {
+      if (distObjetivo <= 0) {
+        const [lat, lon] = rutaLatLng[0];
+        return { lat, lon, rumbo: rumboGrados(rutaLatLng[0], rutaLatLng[1] || rutaLatLng[0]) };
+      }
+      const fin = acumuladas[acumuladas.length - 1];
+      if (distObjetivo >= fin) {
+        const n = rutaLatLng.length - 1;
+        const [lat, lon] = rutaLatLng[n];
+        return { lat, lon, rumbo: rumboGrados(rutaLatLng[n - 1] || rutaLatLng[n], rutaLatLng[n]) };
+      }
+      let i = 1;
+      while (i < acumuladas.length && acumuladas[i] < distObjetivo) i++;
+      const d0 = acumuladas[i - 1];
+      const d1 = acumuladas[i];
+      const r = (distObjetivo - d0) / (d1 - d0 || 1);
+      const a = rutaLatLng[i - 1];
+      const b = rutaLatLng[i];
+      return {
+        lat: a[0] + (b[0] - a[0]) * r,
+        lon: a[1] + (b[1] - a[1]) * r,
+        rumbo: rumboGrados(a, b),
+      };
+    }
+
+    els.btnGpsReal.addEventListener("click", () => {
+      if (gpsWatch != null) {
+        detenerGpsReal();
+        return;
+      }
+      if (!navigator.geolocation) return alert("Sin GPS en este navegador.");
+      detenerSim();
+      llego = false;
+      rastro = [];
+      capaRastro.clearLayers();
+      let prev = null;
+      els.btnGpsReal.textContent = "■ Detener GPS";
+      gpsWatch = navigator.geolocation.watchPosition(
+        (pos) => {
+          const p = [pos.coords.latitude, pos.coords.longitude];
+          const rumbo = prev ? rumboGrados(prev, p) : pos.coords.heading || 0;
+          prev = p;
+          moverCamion(p[0], p[1], rumbo);
+          map.panTo(p);
+        },
+        () => setSenal("debil", "No se pudo leer el GPS."),
+        { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 },
+      );
+    });
+
+    function detenerGpsReal() {
+      if (gpsWatch != null) {
+        navigator.geolocation.clearWatch(gpsWatch);
+        gpsWatch = null;
+      }
+      els.btnGpsReal.textContent = "📡 GPS real";
+    }
+
+    function setSenal(tipo, texto) {
+      els.pastSenal.className = "pastilla " + tipo;
+      els.pastSenal.innerHTML = '<span class="punto"></span> ' +
+        (tipo === "viva" ? "En vivo" : tipo === "debil" ? "Señal débil" : "Sin señal");
+      els.txtSenal.textContent = texto;
+    }
+    function avisar(tipo, texto) {
+      els.aviso.className = "aviso" + (tipo ? " " + tipo : "");
+      els.aviso.textContent = texto || "";
+    }
+
+    setInterval(() => {
+      if (!ultimoFix || llego) return;
+      if (Date.now() - ultimoFix > SIN_SENAL_MS) {
+        setSenal("debil", "Sin señal del transportista hace " +
+          Math.round((Date.now() - ultimoFix) / 60000) + " min.");
+      }
+    }, 5000);
+
+    fijarDestino();
+    fijarOrigen({ lat: -1.052, lon: -79.523, etiqueta: "Finca de ejemplo" });
+    els.origenTxt.value = "Finca de ejemplo (sur de Quevedo)";
+  </script>
+</body>
+</html>

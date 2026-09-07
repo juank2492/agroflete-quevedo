@@ -3,6 +3,7 @@ import type { Observable } from 'rxjs';
 import type {
   Acopio,
   ActualizarReglasRequest,
+  CultivoOpcion,
   EstimacionTarifaRequest,
   EstimacionTarifaResponse,
   ReglasTarifa,
@@ -15,6 +16,10 @@ export class TarifaService {
 
   listarAcopios(): Observable<Acopio[]> {
     return this.api.get<Acopio[]>('/acopios');
+  }
+
+  listarCultivos(): Observable<CultivoOpcion[]> {
+    return this.api.get<CultivoOpcion[]>('/cultivos');
   }
 
   obtenerReglas(): Observable<ReglasTarifa> {

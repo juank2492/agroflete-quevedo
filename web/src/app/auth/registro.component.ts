@@ -4,17 +4,18 @@ import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../core/auth.service';
 import { apiMessage } from '../core/http-error';
 import { UiFeedbackService } from '../core/ui-feedback.service';
+import { PasswordFieldComponent } from '../shared/password-field.component';
 
 const TELEFONO = /^(09\d{8}|\+5939\d{8})$/;
 const PASS = /^(?=.*[A-Z])(?=.*\d).+$/;
 
 @Component({
   selector: 'app-registro',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, PasswordFieldComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h1 class="text-2xl font-bold">Crear cuenta</h1>
-    <p class="mt-1 text-sm text-base-content/70">Regístrate como productor o transportista.</p>
+    <p class="mt-1 text-sm text-base-content/70">Para productores.</p>
 
     @if (serverError()) {
       <div class="alert alert-error mt-4 text-sm">{{ serverError() }}</div>
@@ -61,44 +62,25 @@ const PASS = /^(?=.*[A-Z])(?=.*\d).+$/;
         }
       </label>
 
-      <label class="form-control w-full">
-        <span class="label-text mb-1">Rol</span>
-        <select
-          formControlName="rol"
-          class="select select-bordered w-full"
-          [class.select-error]="invalido('rol')"
+      <app-password-field
+        [control]="form.controls.password"
+        label="Contraseña"
+        autocomplete="new-password"
+        error="Mínimo 8 caracteres, con una mayúscula y un número"
+      />
+
+      <div class="pt-2">
+        <button
+          type="submit"
+          class="btn btn-primary btn-block rounded-full"
+          [disabled]="cargando()"
         >
-          <option value="">Selecciona…</option>
-          <option value="productor">Productor</option>
-          <option value="transportista">Transportista</option>
-        </select>
-        @if (invalido('rol')) {
-          <span class="mt-1 text-xs text-error">Elige un rol</span>
-        }
-      </label>
-
-      <label class="form-control w-full">
-        <span class="label-text mb-1">Contraseña</span>
-        <input
-          type="password"
-          formControlName="password"
-          autocomplete="new-password"
-          class="input input-bordered w-full"
-          [class.input-error]="invalido('password')"
-        />
-        @if (invalido('password')) {
-          <span class="mt-1 text-xs text-error">
-            Mínimo 8 caracteres, con una mayúscula y un número
-          </span>
-        }
-      </label>
-
-      <button type="submit" class="btn btn-primary btn-block rounded-full" [disabled]="cargando()">
-        @if (cargando()) {
-          <span class="loading loading-spinner loading-sm"></span>
-        }
-        Crear cuenta
-      </button>
+          @if (cargando()) {
+            <span class="loading loading-spinner loading-sm"></span>
+          }
+          Crear cuenta
+        </button>
+      </div>
     </form>
 
     <p class="mt-4 text-center text-sm text-base-content/70">
@@ -119,7 +101,6 @@ export class RegistroComponent {
     nombreCompleto: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(120)]],
     email: ['', [Validators.required, Validators.email]],
     telefono: ['', [Validators.required, Validators.pattern(TELEFONO)]],
-    rol: ['', [Validators.required]],
     password: ['', [Validators.required, Validators.minLength(8), Validators.pattern(PASS)]],
   });
 
@@ -142,7 +123,7 @@ export class RegistroComponent {
         email: value.email,
         telefono: value.telefono,
         password: value.password,
-        rol: value.rol as 'productor' | 'transportista',
+        rol: 'productor',
       })
       .subscribe({
         next: () => {

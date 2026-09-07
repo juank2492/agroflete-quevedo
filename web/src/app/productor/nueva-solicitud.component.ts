@@ -14,9 +14,10 @@ import { debounceTime } from 'rxjs';
 import {
   haversineKm,
   type Acopio,
-  type Cultivo,
+  type CultivoOpcion,
   type EstimacionTarifaResponse,
   type LatLon,
+  type LugarGeocodificado,
 } from '@agroflete/shared';
 import { IconComponent } from '../core/icon.component';
 import { SolicitudService } from '../core/solicitud.service';
@@ -24,14 +25,19 @@ import { TarifaService } from '../core/tarifa.service';
 import { UiFeedbackService } from '../core/ui-feedback.service';
 import { apiMessage } from '../core/http-error';
 import { TarifaCardComponent } from '../shared/tarifa-card.component';
-
-const QUEVEDO_CENTRO: LatLon = { lat: -1.0225, lon: -79.4604 };
+import { BuscadorLugarComponent } from '../shared/buscador-lugar.component';
 
 type GeoEstado = 'pidiendo' | 'ok' | 'denegado' | 'no-soportado';
 
 @Component({
   selector: 'app-nueva-solicitud',
-  imports: [ReactiveFormsModule, DecimalPipe, IconComponent, TarifaCardComponent],
+  imports: [
+    ReactiveFormsModule,
+    DecimalPipe,
+    IconComponent,
+    TarifaCardComponent,
+    BuscadorLugarComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="mx-auto max-w-md">
@@ -40,34 +46,73 @@ type GeoEstado = 'pidiendo' | 'ok' | 'denegado' | 'no-soportado';
         Confírmala en 3 toques: cultivo · toneladas · Confirmar.
       </p>
 
-      <!-- ORIGEN -->
       <div class="mt-4 rounded-box bg-base-100 p-4 text-sm shadow-card">
-        <div class="flex items-center gap-2">
-          <app-icon name="pin" [size]="18" class="text-primary" />
-          @switch (geo()) {
-            @case ('pidiendo') {
-              <span class="text-base-content/60">Obteniendo tu ubicación…</span>
-            }
-            @case ('ok') {
-              <span>
-                Origen: {{ origen()!.lat | number: '1.4-4' }},
-                {{ origen()!.lon | number: '1.4-4' }}
-              </span>
-            }
-            @default {
-              <span class="text-base-content/70"> Sin ubicación GPS: usamos Quevedo centro. </span>
-            }
-          }
+        <div class="mb-2 flex items-center justify-between">
+          <span class="label-text">¿Dónde está la cosecha?</span>
+          <div class="join">
+            <button
+              type="button"
+              class="btn btn-xs join-item"
+              [class.btn-primary]="modoOrigen() === 'gps'"
+              (click)="modoOrigen.set('gps'); pedirUbicacion()"
+            >
+              Mi GPS
+            </button>
+            <button
+              type="button"
+              class="btn btn-xs join-item"
+              [class.btn-primary]="modoOrigen() === 'direccion'"
+              (click)="modoOrigen.set('direccion')"
+            >
+              Escribir dirección
+            </button>
+          </div>
         </div>
-        @if (geo() === 'denegado' || geo() === 'no-soportado') {
-          <button class="btn btn-ghost btn-xs mt-2" (click)="pedirUbicacion()">
-            Reintentar ubicación
-          </button>
+
+        @if (modoOrigen() === 'direccion') {
+          <app-buscador-lugar
+            placeholder="Ej: Parque La Familia, recinto San Juan…"
+            (selecciona)="usarLugar($event)"
+            (limpia)="limpiarOrigen()"
+          />
+          @if (origenNombre()) {
+            <p class="mt-2 flex items-center gap-1 text-xs text-success">
+              <app-icon name="pin" [size]="14" /> {{ origenNombre() }}
+            </p>
+          } @else {
+            <p class="mt-2 text-xs text-base-content/50">
+              Elige un lugar de la lista para continuar.
+            </p>
+          }
+        } @else {
+          <div class="flex items-center gap-2">
+            <app-icon name="pin" [size]="18" class="text-primary" />
+            @switch (geo()) {
+              @case ('pidiendo') {
+                <span class="text-base-content/60">Obteniendo tu ubicación…</span>
+              }
+              @case ('ok') {
+                <span>
+                  Origen: {{ origen()!.lat | number: '1.4-4' }},
+                  {{ origen()!.lon | number: '1.4-4' }}
+                </span>
+              }
+              @default {
+                <span class="text-warning">
+                  No pudimos obtener tu ubicación. Reintenta o escribe la dirección.
+                </span>
+              }
+            }
+          </div>
+          @if (geo() === 'denegado' || geo() === 'no-soportado') {
+            <button class="btn btn-ghost btn-xs mt-2" (click)="pedirUbicacion()">
+              Reintentar ubicación
+            </button>
+          }
         }
       </div>
 
       <form [formGroup]="form" (ngSubmit)="confirmar()" class="mt-4 space-y-4">
-        <!-- DESTINO -->
         <label class="form-control w-full">
           <span class="label-text mb-1">Centro de acopio</span>
           <select formControlName="acopioId" class="select select-bordered w-full">
@@ -78,24 +123,22 @@ type GeoEstado = 'pidiendo' | 'ok' | 'denegado' | 'no-soportado';
           </select>
         </label>
 
-        <!-- CULTIVO (toque 1) -->
         <div>
           <span class="label-text mb-1 block">Cultivo</span>
-          <div class="join w-full">
-            @for (c of cultivos; track c.valor) {
+          <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            @for (c of cultivos(); track c.clave) {
               <button
                 type="button"
-                class="btn join-item flex-1"
-                [class.btn-primary]="form.value.cultivo === c.valor"
-                (click)="setCultivo(c.valor)"
+                class="btn"
+                [class.btn-primary]="form.value.cultivo === c.clave"
+                (click)="setCultivo(c.clave)"
               >
-                {{ c.label }}
+                {{ c.nombre }}
               </button>
             }
           </div>
         </div>
 
-        <!-- TONELADAS (toque 2) -->
         <div>
           <span class="label-text mb-1 block">Toneladas</span>
           <div class="join">
@@ -123,17 +166,23 @@ type GeoEstado = 'pidiendo' | 'ok' | 'denegado' | 'no-soportado';
           [cargando]="estimando()"
         />
 
-        <!-- CONFIRMAR (toque 3) -->
-        <button
-          type="submit"
-          class="btn btn-primary btn-block rounded-full"
-          [disabled]="enviando() || form.invalid || !origen()"
-        >
-          @if (enviando()) {
-            <span class="loading loading-spinner loading-sm"></span>
+        <div class="border-t border-base-300 pt-5">
+          @if (!origen()) {
+            <p class="mb-2 text-center text-xs text-base-content/50">
+              Falta indicar dónde se recoge la cosecha.
+            </p>
           }
-          Confirmar flete
-        </button>
+          <button
+            type="submit"
+            class="btn btn-primary btn-block rounded-full"
+            [disabled]="enviando() || form.invalid || !origen()"
+          >
+            @if (enviando()) {
+              <span class="loading loading-spinner loading-sm"></span>
+            }
+            Confirmar flete
+          </button>
+        </div>
       </form>
     </div>
   `,
@@ -146,13 +195,11 @@ export class NuevaSolicitudComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
 
-  protected readonly cultivos: Array<{ valor: Cultivo; label: string }> = [
-    { valor: 'maiz', label: 'Maíz' },
-    { valor: 'banano', label: 'Banano' },
-  ];
-
+  protected readonly cultivos = signal<CultivoOpcion[]>([]);
   protected readonly acopios = signal<Acopio[]>([]);
   protected readonly origen = signal<LatLon | null>(null);
+  protected readonly origenNombre = signal<string | null>(null);
+  protected readonly modoOrigen = signal<'gps' | 'direccion'>('gps');
   protected readonly geo = signal<GeoEstado>('pidiendo');
   protected readonly estimacion = signal<EstimacionTarifaResponse | null>(null);
   protected readonly estimando = signal(false);
@@ -160,7 +207,7 @@ export class NuevaSolicitudComponent implements OnInit {
 
   protected readonly form = this.fb.nonNullable.group({
     acopioId: ['', [Validators.required]],
-    cultivo: ['maiz' as Cultivo, [Validators.required]],
+    cultivo: ['', [Validators.required]],
     pesoTon: [5, [Validators.required, Validators.min(0.5), Validators.max(40)]],
   });
 
@@ -171,6 +218,14 @@ export class NuevaSolicitudComponent implements OnInit {
         this.preseleccionarAcopio();
       },
     });
+    this.tarifa.listarCultivos().subscribe({
+      next: (list) => {
+        this.cultivos.set(list);
+        if (!this.form.controls.cultivo.value && list[0]) {
+          this.form.controls.cultivo.setValue(list[0].clave);
+        }
+      },
+    });
     this.pedirUbicacion();
 
     this.form.valueChanges
@@ -178,11 +233,27 @@ export class NuevaSolicitudComponent implements OnInit {
       .subscribe(() => this.estimar());
   }
 
+  /** Fija el origen desde el lugar elegido. */
+  protected usarLugar(l: LugarGeocodificado): void {
+    this.origen.set({ lat: l.lat, lon: l.lon });
+    this.origenNombre.set(l.etiqueta ? `${l.nombre} · ${l.etiqueta}` : l.nombre);
+    this.geo.set('ok');
+    this.preseleccionarAcopio();
+    this.estimar();
+  }
+
+  /** Elimina el origen seleccionado. */
+  protected limpiarOrigen(): void {
+    this.origen.set(null);
+    this.origenNombre.set(null);
+    this.estimacion.set(null);
+  }
+
   pedirUbicacion(): void {
+    this.origenNombre.set(null);
     if (!('geolocation' in navigator)) {
       this.geo.set('no-soportado');
-      this.origen.set(QUEVEDO_CENTRO);
-      this.preseleccionarAcopio();
+      this.origen.set(null);
       return;
     }
     this.geo.set('pidiendo');
@@ -195,9 +266,7 @@ export class NuevaSolicitudComponent implements OnInit {
       },
       () => {
         this.geo.set('denegado');
-        this.origen.set(QUEVEDO_CENTRO);
-        this.preseleccionarAcopio();
-        this.estimar();
+        this.origen.set(null);
       },
       { enableHighAccuracy: true, timeout: 8000 },
     );
@@ -214,8 +283,8 @@ export class NuevaSolicitudComponent implements OnInit {
     if (cercano) this.form.controls.acopioId.setValue(cercano.id);
   }
 
-  protected setCultivo(c: Cultivo): void {
-    this.form.controls.cultivo.setValue(c);
+  protected setCultivo(clave: string): void {
+    this.form.controls.cultivo.setValue(clave);
   }
 
   protected ajustarPeso(delta: number): void {
@@ -250,6 +319,7 @@ export class NuevaSolicitudComponent implements OnInit {
     this.solicitud
       .crear({
         origen: o,
+        ...(this.origenNombre() ? { origenNombre: this.origenNombre()! } : {}),
         acopioId: this.form.controls.acopioId.value,
         cultivo: this.form.controls.cultivo.value,
         pesoTon: this.form.controls.pesoTon.value,

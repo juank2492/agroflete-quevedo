@@ -5,19 +5,13 @@ export interface SmtpConfig {
   host: string;
   port: number;
   from: string;
-  /** Usuario SMTP. Ausente => sin autenticación (Mailpit local). */
+  /** Usuario SMTP; ausente para Mailpit local. */
   user?: string;
-  /** Contraseña / app password. */
   pass?: string;
-  /** TLS implícito (puerto 465). Por defecto se deduce del puerto. */
   secure?: boolean;
 }
 
-/**
- * Notifier por SMTP. Sirve tanto para Mailpit local (sin auth) como para un
- * proveedor real (Gmail, SES, Brevo...) cuando se dan user/pass. En AWS se
- * sustituye por SES.
- */
+/** Notificador SMTP para Mailpit local o proveedores autenticados. */
 export function makeSmtpNotifier(cfg: SmtpConfig): Notifier {
   const auth = cfg.user && cfg.pass ? { user: cfg.user, pass: cfg.pass } : undefined;
   const secure = cfg.secure ?? cfg.port === 465;
@@ -27,8 +21,7 @@ export function makeSmtpNotifier(cfg: SmtpConfig): Notifier {
     port: cfg.port,
     secure,
     auth,
-    // Con auth (proveedor real) exigimos STARTTLS y validación normal de cert.
-    // Sin auth (Mailpit en 127.0.0.1) no hay certificado que validar.
+    // Mailpit local no requiere TLS; los proveedores autenticados sí.
     ...(auth ? { requireTLS: !secure } : { tls: { rejectUnauthorized: false } }),
   });
 

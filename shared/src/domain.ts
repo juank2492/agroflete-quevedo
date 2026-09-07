@@ -4,14 +4,16 @@ export const ROLES = ['productor', 'transportista', 'admin'] as const;
 export const rolSchema = z.enum(ROLES);
 export type Rol = z.infer<typeof rolSchema>;
 
-/** Roles que se pueden auto-registrar desde el portal. `admin` se crea por seed. */
-export const rolRegistrableSchema = z.enum(['productor', 'transportista']);
+/** Solo `productor` puede registrarse desde el portal público. */
+export const rolRegistrableSchema = z.enum(['productor']);
 
-export const CULTIVOS = ['maiz', 'banano'] as const;
-export const cultivoSchema = z.enum(CULTIVOS);
+/** Clave libre del catálogo de cultivos administrado por el admin. */
+export const cultivoSchema = z
+  .string()
+  .trim()
+  .regex(/^[a-z0-9-]{2,32}$/, 'Clave de cultivo inválida');
 export type Cultivo = z.infer<typeof cultivoSchema>;
 
-/** Zonas logísticas del cantón Quevedo y alrededores usadas para emparejar oferta/demanda. */
 export const ZONAS = [
   'quevedo-centro',
   'quevedo-norte',
@@ -25,7 +27,7 @@ export const ZONAS = [
 export const zonaSchema = z.enum(ZONAS);
 export type Zona = z.infer<typeof zonaSchema>;
 
-export const ESTADOS_USUARIO = ['PENDIENTE_CONF', 'CONFIRMADO'] as const;
+export const ESTADOS_USUARIO = ['PENDIENTE_CONF', 'CONFIRMADO', 'INACTIVO'] as const;
 export const estadoUsuarioSchema = z.enum(ESTADOS_USUARIO);
 export type EstadoUsuario = z.infer<typeof estadoUsuarioSchema>;
 
@@ -50,25 +52,29 @@ export const ESTADOS_FLETE = [
   'EN_RUTA',
   'ENTREGADO',
   'CANCELADO',
+  'INCIDENCIA',
 ] as const;
 export const estadoFleteSchema = z.enum(ESTADOS_FLETE);
 export type EstadoFlete = z.infer<typeof estadoFleteSchema>;
 
-/**
- * Máquina de estados del flete. Fuente única de verdad, compartida por backend
- * (validación) y frontend (mostrar la siguiente acción válida).
- */
+/** Fuente única de verdad para las transiciones de estado del flete. */
 export const TRANSICIONES_FLETE: Record<EstadoFlete, EstadoFlete[]> = {
   ASIGNADO: ['EN_CAMINO_ORIGEN', 'CANCELADO'],
-  EN_CAMINO_ORIGEN: ['CARGANDO', 'CANCELADO'],
-  CARGANDO: ['EN_RUTA', 'CANCELADO'],
-  EN_RUTA: ['ENTREGADO', 'CANCELADO'],
+  EN_CAMINO_ORIGEN: ['CARGANDO', 'CANCELADO', 'INCIDENCIA'],
+  CARGANDO: ['EN_RUTA', 'CANCELADO', 'INCIDENCIA'],
+  EN_RUTA: ['ENTREGADO', 'CANCELADO', 'INCIDENCIA'],
   ENTREGADO: [],
   CANCELADO: [],
+  INCIDENCIA: [],
 };
 
 export function puedeTransicionarFlete(actual: EstadoFlete, siguiente: EstadoFlete): boolean {
   return TRANSICIONES_FLETE[actual].includes(siguiente);
+}
+
+/** Estados desde los que el transportista puede reportar una incidencia en ruta. */
+export function puedeReportarIncidencia(actual: EstadoFlete): boolean {
+  return TRANSICIONES_FLETE[actual].includes('INCIDENCIA');
 }
 
 export const TIPOS_EVENTO = [
@@ -79,6 +85,10 @@ export const TIPOS_EVENTO = [
   'EstadoFleteCambiado',
   'EntregaConfirmada',
   'RetrasoDetectado',
+  'IncidenciaEnRuta',
+  'StockBajo',
+  'StockAlto',
+  'TransportistaCreado',
 ] as const;
 export const tipoEventoSchema = z.enum(TIPOS_EVENTO);
 export type TipoEvento = z.infer<typeof tipoEventoSchema>;

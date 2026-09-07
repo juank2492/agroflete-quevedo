@@ -115,6 +115,16 @@ export function makeSolicitudRepository(
         sets.push('#retrasoNotificado = :retrasoNotificado');
         values[':retrasoNotificado'] = patch.retrasoNotificado;
       }
+      if (patch.reasignacionPorIncidencia !== undefined) {
+        names['#rpi'] = 'reasignacionPorIncidencia';
+        sets.push('#rpi = :rpi');
+        values[':rpi'] = patch.reasignacionPorIncidencia;
+      }
+      if (patch.motivoIncidencia !== undefined) {
+        names['#mi'] = 'motivoIncidencia';
+        sets.push('#mi = :mi');
+        values[':mi'] = patch.motivoIncidencia;
+      }
       if (!sets.length && !removes.length) return;
 
       const expr = [

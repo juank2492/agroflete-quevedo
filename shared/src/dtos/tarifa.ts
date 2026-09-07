@@ -6,43 +6,69 @@ const rangoMesSchema = z
   .tuple([z.number().int().min(1).max(12), z.number().int().min(1).max(12)])
   .refine(([ini, fin]) => ini <= fin, 'El mes inicial debe ser <= al final');
 
+/** Regla de tarifa para un cultivo. */
+export const cultivoTarifaSchema = z.object({
+  clave: cultivoSchema,
+  nombre: z.string().trim().min(2, 'Nombre demasiado corto').max(40),
+  factor: z.number().min(0.5).max(3),
+  temporadas: z.array(rangoMesSchema).max(6),
+  /** Los cultivos referenciados se desactivan en vez de borrarse. */
+  activo: z.boolean().optional(),
+});
+export type CultivoTarifa = z.infer<typeof cultivoTarifaSchema>;
+
 export const reglasTarifaSchema = z.object({
-  /** USD por kilómetro recorrido. */
   tarifaBaseKm: z.number().positive().max(50),
-  /** Multiplicador para maíz. */
-  factorMaiz: z.number().min(0.5).max(3),
-  /** Multiplicador para banano (carga más delicada/voluminosa). */
-  factorBanano: z.number().min(0.5).max(3),
-  /** Recargo fraccionario aplicado en temporada de cosecha (0.2 = +20%). */
   recargoTemporada: z.number().min(0).max(1),
-  /** Corrección de distancia geodésica -> vial. */
   factorSinuosidad: z.number().min(1).max(2),
-  /** Meses de cosecha por cultivo (rangos [ini, fin] inclusive). */
-  temporadas: z.object({
-    maiz: z.array(rangoMesSchema).max(6),
-    banano: z.array(rangoMesSchema).max(6),
-  }),
+  cultivos: z
+    .array(cultivoTarifaSchema)
+    .min(1, 'Debe haber al menos un cultivo')
+    .max(20)
+    .refine(
+      (cs) => new Set(cs.map((c) => c.clave)).size === cs.length,
+      'Hay claves de cultivo repetidas',
+    ),
 });
 export type ReglasTarifa = z.infer<typeof reglasTarifaSchema>;
 
 export const REGLAS_TARIFA_DEFAULT: ReglasTarifa = {
   tarifaBaseKm: 0.9,
-  factorMaiz: 1.0,
-  factorBanano: 1.15,
   recargoTemporada: 0.2,
   factorSinuosidad: 1.3,
-  temporadas: {
-    maiz: [
-      [4, 6],
-      [10, 12],
-    ],
-    banano: [[1, 3]],
-  },
+  cultivos: [
+    {
+      clave: 'maiz',
+      nombre: 'Maíz',
+      factor: 1.0,
+      temporadas: [
+        [4, 6],
+        [10, 12],
+      ],
+      activo: true,
+    },
+    { clave: 'banano', nombre: 'Banano', factor: 1.15, temporadas: [[1, 3]], activo: true },
+  ],
 };
 
-/** Actualización parcial de reglas (PUT /tarifas/reglas). */
+export function claveDesdeNombre(nombre: string): string {
+  return nombre
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 32);
+}
+
+/** Actualiza las reglas; el catálogo se reemplaza completo. */
 export const actualizarReglasRequestSchema = reglasTarifaSchema.partial();
 export type ActualizarReglasRequest = z.infer<typeof actualizarReglasRequestSchema>;
+
+/** Devuelve el catálogo para el selector del productor. */
+export const cultivoOpcionSchema = z.object({ clave: z.string(), nombre: z.string() });
+export type CultivoOpcion = z.infer<typeof cultivoOpcionSchema>;
 
 export const estimacionTarifaRequestSchema = z.object({
   origen: latLonSchema,

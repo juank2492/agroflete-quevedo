@@ -43,7 +43,7 @@ export class ComoFuncionaComponent {
     {
       titulo: 'El productor publica la solicitud',
       detalle:
-        'Desde el celular indica su ubicación, elige el centro de acopio de destino, el cultivo (maíz o banano) y las toneladas. El sistema calcula la distancia y muestra la tarifa estimada antes de confirmar.',
+        'Desde el celular indica su ubicación, elige el centro de acopio de destino, el cultivo y las toneladas. El sistema calcula la distancia y muestra la tarifa estimada antes de confirmar.',
     },
     {
       titulo: 'La comercializadora asigna un camión',

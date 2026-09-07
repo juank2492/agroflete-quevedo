@@ -16,8 +16,15 @@ import { IconComponent } from '../core/icon.component';
           <img src="icons/logo-64.png" alt="" class="h-7 w-7" width="28" height="28" />
           AgroFlete
         </a>
-        <div class="flex items-center gap-3">
-          <span class="hidden text-sm text-base-content/70 sm:inline">{{ auth.nombre() }}</span>
+        <div class="flex items-center gap-2">
+          <a
+            routerLink="/p/perfil"
+            routerLinkActive="text-primary"
+            class="flex items-center gap-2 rounded-full px-2 py-1 text-sm text-base-content/70 hover:bg-base-200"
+          >
+            <app-icon name="user" [size]="18" />
+            <span class="hidden sm:inline">{{ auth.nombre() }}</span>
+          </a>
           <button class="btn btn-ghost btn-sm" (click)="salir()">Salir</button>
         </div>
       </header>

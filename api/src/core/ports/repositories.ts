@@ -1,5 +1,6 @@
 import type {
   Acopio,
+  AjustesOperacion,
   EstadoFlete,
   EstadoSolicitud,
   EstadoUsuario,
@@ -9,11 +10,10 @@ import type {
   Rol,
   Solicitud,
   TipoEvento,
+  UbicacionFlete,
   Vehiculo,
   Zona,
 } from '@agroflete/shared';
-
-// -------------------- Usuarios --------------------
 
 export interface UsuarioRecord {
   id: string;
@@ -29,15 +29,14 @@ export interface UsuarioRecord {
 }
 
 export interface UsuarioRepository {
-  /** Inserta; lanza ConflictError si el id ya existe. */
   crear(usuario: UsuarioRecord): Promise<void>;
   porId(id: string): Promise<UsuarioRecord | null>;
   porEmail(email: string): Promise<UsuarioRecord | null>;
-  /** Actualiza campos; `undefined` en un campo lo elimina del ítem. */
+  /** Lista usuarios por rol. */
+  listarPorRol(rol: Rol): Promise<UsuarioRecord[]>;
+  /** Actualiza campos; `undefined` elimina el atributo. */
   actualizar(id: string, patch: Partial<UsuarioRecord>): Promise<void>;
 }
-
-// -------------------- Outbox de eventos --------------------
 
 export interface OutboxRecord {
   id: string;
@@ -58,50 +57,69 @@ export interface OutboxRepository {
   registrarIntento(id: string): Promise<void>;
 }
 
-// -------------------- Catálogo: centros de acopio --------------------
-
 export interface AcopioRepository {
   listar(): Promise<Acopio[]>;
   porId(id: string): Promise<Acopio | null>;
   guardar(acopio: Acopio): Promise<void>;
 }
 
-// -------------------- Reglas de tarifa --------------------
+export interface StockRecord {
+  acopioId: string;
+  cultivo: string;
+  cantidadActual: number;
+  umbralMinimo: number;
+  umbralMaximo: number;
+}
+
+export interface InventarioRepository {
+  porAcopio(acopioId: string): Promise<StockRecord[]>;
+  obtener(acopioId: string, cultivo: string): Promise<StockRecord | null>;
+  guardar(rec: StockRecord): Promise<void>;
+}
 
 export interface ReglasTarifaRepository {
-  /** Devuelve las reglas vigentes; si no hay, las reglas por defecto. */
+  /** Devuelve las reglas vigentes o las predeterminadas. */
   obtener(): Promise<ReglasTarifa>;
   guardar(reglas: ReglasTarifa): Promise<void>;
 }
 
-// -------------------- Solicitudes de flete --------------------
+export interface AjustesRepository {
+  /** Devuelve los ajustes vigentes o los predeterminados. */
+  obtener(): Promise<AjustesOperacion>;
+  guardar(ajustes: AjustesOperacion): Promise<void>;
+}
 
 export interface SolicitudRepository {
   crear(solicitud: Solicitud): Promise<void>;
   porId(id: string): Promise<Solicitud | null>;
   porProductor(productorId: string): Promise<Solicitud[]>;
   porEstado(estado: EstadoSolicitud): Promise<Solicitud[]>;
-  /**
-   * Cambia estado (y opcionalmente `fleteId`); mantiene el índice por estado.
-   * `opts.estadoActual` añade una guarda optimista: si el estado ya cambió,
-   * lanza ConflictError.
-   */
+  /** Cambia el estado y puede exigir el estado actual. */
   actualizar(
     id: string,
-    patch: Partial<Pick<Solicitud, 'estado' | 'fleteId' | 'retrasoNotificado'>>,
+    patch: Partial<
+      Pick<
+        Solicitud,
+        | 'estado'
+        | 'fleteId'
+        | 'retrasoNotificado'
+        | 'reasignacionPorIncidencia'
+        | 'motivoIncidencia'
+      >
+    >,
     opts?: { estadoActual?: EstadoSolicitud },
   ): Promise<void>;
   /** Solicitudes PENDIENTE creadas antes de `fechaIso` (para detectar retrasos). */
   pendientesAntesDe(fechaIso: string): Promise<Solicitud[]>;
 }
 
-// -------------------- Vehículos --------------------
-
 export interface VehiculoRepository {
   crear(vehiculo: Vehiculo): Promise<void>;
   porId(id: string): Promise<Vehiculo | null>;
   porTransportista(transportistaId: string): Promise<Vehiculo[]>;
-  /** Vehículos con estado DISPONIBLE en una zona (índice gsi2). */
+  /** Lista toda la flota. */
+  listarTodos(): Promise<Vehiculo[]>;
+  /** Lista vehículos disponibles por zona. */
   disponiblesEnZona(zona: Zona): Promise<Vehiculo[]>;
   actualizar(
     id: string,
@@ -109,8 +127,6 @@ export interface VehiculoRepository {
     opts?: { estadoActual?: EstadoVehiculo },
   ): Promise<void>;
 }
-
-// -------------------- Fletes --------------------
 
 export interface FleteRepository {
   crear(flete: Flete): Promise<void>;
@@ -120,18 +136,24 @@ export interface FleteRepository {
   porEstado(estado: EstadoFlete): Promise<Flete[]>;
   actualizar(
     id: string,
-    patch: Partial<Pick<Flete, 'estado' | 'timeline'>>,
+    patch: Partial<
+      Pick<Flete, 'estado' | 'timeline' | 'incidencia' | 'ultimaUbicacion' | 'motivoCancelacion'>
+    >,
     opts?: { estadoActual?: EstadoFlete },
   ): Promise<void>;
+  /** Añade un punto al rastro del flete. */
+  agregarTrack(fleteId: string, punto: UbicacionFlete): Promise<void>;
+  /** Devuelve el rastro ordenado por tiempo. */
+  ruta(fleteId: string): Promise<UbicacionFlete[]>;
 }
-
-// -------------------- Contenedor de repositorios --------------------
 
 export interface Repositories {
   usuarios: UsuarioRepository;
   outbox: OutboxRepository;
   acopios: AcopioRepository;
+  inventario: InventarioRepository;
   reglas: ReglasTarifaRepository;
+  ajustes: AjustesRepository;
   solicitudes: SolicitudRepository;
   vehiculos: VehiculoRepository;
   fletes: FleteRepository;

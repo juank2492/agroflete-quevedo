@@ -6,9 +6,13 @@ import {
   dynamoDisponible,
   type CtxDePrueba,
 } from '../../../test/dynamo-it.js';
+import type { JwtClaims } from '@agroflete/shared';
 import { crearSolicitud } from './crear-solicitud.js';
 import { asignarFlete, listarVehiculosCompatibles } from './asignar-flete.js';
 import { actualizarVehiculo, misVehiculos, registrarVehiculo } from './gestion-vehiculos.js';
+import { reasignarFlete } from './reasignar-flete.js';
+
+const admin: JwtClaims = { sub: 'admin-1', email: 'a@f.ec', role: 'admin', name: 'Admin' };
 
 const TABLA = 'AgrofleteTable-it-asignacion';
 
@@ -72,11 +76,11 @@ describe('asignación de fletes (integración con DynamoDB Local)', () => {
 
   it('listarVehiculosCompatibles filtra por zona y capacidad', async () => {
     if (!disponible) return;
-    const s = await crearSolicitud(h.ctx, 'p-1', solicitudInput); // pesoTon 10, zona mocache
+    const s = await crearSolicitud(h.ctx, 'p-1', solicitudInput);
     await registrarVehiculo(h.ctx, 't-3', {
       placa: 'CAP-0500',
       tipo: 'furgon',
-      capacidadTon: 5, // insuficiente
+      capacidadTon: 5,
       zona: 'mocache',
     });
     const grande = await registrarVehiculo(h.ctx, 't-4', {
@@ -157,5 +161,45 @@ describe('asignación de fletes (integración con DynamoDB Local)', () => {
     await expect(
       asignarFlete(h.ctx, 'admin-1', { solicitudId: 'nope', vehiculoId: 'nope' }),
     ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it('reasignarFlete cancela el flete actual y crea uno nuevo con el otro vehículo', async () => {
+    if (!disponible) return;
+    const s = await crearSolicitud(h.ctx, 'p-re', solicitudInput);
+    const v1 = await registrarVehiculo(h.ctx, 't-re1', {
+      placa: 'REA-0001',
+      tipo: 'camion',
+      capacidadTon: 15,
+      zona: 'mocache',
+    });
+    const v2 = await registrarVehiculo(h.ctx, 't-re2', {
+      placa: 'REA-0002',
+      tipo: 'camion',
+      capacidadTon: 20,
+      zona: 'mocache',
+    });
+    const original = await asignarFlete(h.ctx, 'admin-1', { solicitudId: s.id, vehiculoId: v1.id });
+
+    const nuevo = await reasignarFlete(h.ctx, admin, original.id, v2.id);
+    expect(nuevo.id).not.toBe(original.id);
+    expect(nuevo.vehiculoId).toBe(v2.id);
+    expect(nuevo.estado).toBe('ASIGNADO');
+
+    expect((await h.ctx.repos.fletes.porId(original.id))?.estado).toBe('CANCELADO');
+    expect((await h.ctx.repos.vehiculos.porId(v1.id))?.estado).toBe('DISPONIBLE');
+    expect((await h.ctx.repos.vehiculos.porId(v2.id))?.estado).toBe('OCUPADO');
+    expect((await h.ctx.repos.solicitudes.porId(s.id))?.fleteId).toBe(nuevo.id);
+
+    // A un vehículo de otra zona: rechaza sin tocar el flete.
+    const otraZona = await registrarVehiculo(h.ctx, 't-re3', {
+      placa: 'REA-0003',
+      tipo: 'camion',
+      capacidadTon: 20,
+      zona: 'buena-fe',
+    });
+    await expect(reasignarFlete(h.ctx, admin, nuevo.id, otraZona.id)).rejects.toBeInstanceOf(
+      ConflictError,
+    );
+    expect((await h.ctx.repos.fletes.porId(nuevo.id))?.estado).toBe('ASIGNADO');
   });
 });

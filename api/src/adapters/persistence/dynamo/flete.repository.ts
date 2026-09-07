@@ -6,7 +6,7 @@ import {
   type DynamoDBDocumentClient,
 } from '@aws-sdk/lib-dynamodb';
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
-import type { EstadoFlete, Flete } from '@agroflete/shared';
+import type { EstadoFlete, Flete, UbicacionFlete } from '@agroflete/shared';
 import { ConflictError } from '../../../core/domain/errors.js';
 import type { FleteRepository } from '../../../core/ports/repositories.js';
 
@@ -90,6 +90,38 @@ export function makeFleteRepository(doc: DynamoDBDocumentClient, table: string):
     porProductor: (id) => queryIndex(doc, table, 'gsi3', 'gsi3pk', prodPk(id)),
     porEstado: (estado) => queryIndex(doc, table, 'gsi4', 'gsi4pk', estadoPk(estado)),
 
+    async agregarTrack(fleteId, punto) {
+      await doc.send(
+        new PutCommand({
+          TableName: table,
+          Item: {
+            PK: pk(fleteId),
+            SK: `TRACK#${punto.ts}`,
+            lat: punto.lat,
+            lon: punto.lon,
+            ts: punto.ts,
+            ...(punto.velocidad !== undefined ? { velocidad: punto.velocidad } : {}),
+          },
+        }),
+      );
+    },
+
+    async ruta(fleteId) {
+      const res = await doc.send(
+        new QueryCommand({
+          TableName: table,
+          KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+          ExpressionAttributeValues: { ':pk': pk(fleteId), ':sk': 'TRACK#' },
+        }),
+      );
+      return (res.Items ?? []).map((it) => ({
+        lat: Number(it['lat']),
+        lon: Number(it['lon']),
+        ts: it['ts'] as string,
+        ...(it['velocidad'] !== undefined ? { velocidad: Number(it['velocidad']) } : {}),
+      })) as UbicacionFlete[];
+    },
+
     async actualizar(id, patch, opts) {
       const names: Record<string, string> = {};
       const values: Record<string, unknown> = {};
@@ -106,6 +138,21 @@ export function makeFleteRepository(doc: DynamoDBDocumentClient, table: string):
         names['#timeline'] = 'timeline';
         sets.push('#timeline = :timeline');
         values[':timeline'] = patch.timeline;
+      }
+      if (patch.incidencia !== undefined) {
+        names['#incidencia'] = 'incidencia';
+        sets.push('#incidencia = :incidencia');
+        values[':incidencia'] = patch.incidencia;
+      }
+      if (patch.ultimaUbicacion !== undefined) {
+        names['#ultimaUbicacion'] = 'ultimaUbicacion';
+        sets.push('#ultimaUbicacion = :ultimaUbicacion');
+        values[':ultimaUbicacion'] = patch.ultimaUbicacion;
+      }
+      if (patch.motivoCancelacion !== undefined) {
+        names['#motivoCancelacion'] = 'motivoCancelacion';
+        sets.push('#motivoCancelacion = :motivoCancelacion');
+        values[':motivoCancelacion'] = patch.motivoCancelacion;
       }
       if (!sets.length) return;
 

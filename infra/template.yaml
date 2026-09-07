@@ -34,7 +34,6 @@ Globals:
       AllowOrigin: !Sub "'${WebOrigin}'"
 
 Resources:
-  # --- Persistencia: DynamoDB single-table, on-demand => costo 0 en inactividad ---
   TablaPrincipal:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -92,7 +91,6 @@ Resources:
             - { AttributeName: gsi6sk, KeyType: RANGE }
           Projection: { ProjectionType: ALL }
 
-  # --- Bus de eventos de dominio (reemplaza el outbox+worker local) ---
   BusEventos:
     Type: AWS::Events::EventBus
     Properties:
@@ -111,13 +109,11 @@ Resources:
     Properties:
       QueueName: !Sub 'agroflete-notificaciones-dlq-${Etapa}'
 
-  # --- API HTTP ---
   HttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
       StageName: !Ref Etapa
 
-  # --- Funcion de ejemplo (health). Las demas se agregan en la Fase A. ---
   FnHealth:
     Type: AWS::Serverless::Function
     Properties:
@@ -132,7 +128,6 @@ Resources:
             Method: GET
             Path: /salud
 
-  # --- Panel de metricas para el capitulo de resultados del documento ---
   PanelMetricas:
     Type: AWS::CloudWatch::Dashboard
     Properties:

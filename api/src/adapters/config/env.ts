@@ -3,8 +3,7 @@ import { resolve } from 'node:path';
 import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
 
-// Carga .env.local desde la raíz del monorepo o desde el cwd, sin sobrescribir
-// variables ya presentes en el entorno (útil en CI y en la fase AWS).
+// Carga .env.local sin sobrescribir variables existentes.
 for (const candidate of [
   resolve(process.cwd(), '../.env.local'),
   resolve(process.cwd(), '.env.local'),
@@ -38,10 +37,21 @@ const envSchema = z.object({
   SMTP_PASS: z.string().optional(),
   SMTP_SECURE: bool.optional(),
   SMTP_FROM: z.string().default('AgrofleteQ <no-reply@agroflete.local>'),
+  /** Destinatario de las alertas operativas. */
+  ADMIN_EMAIL: z.string().default('admin@agroflete.ec'),
 
   OUTBOX_POLL_MS: z.coerce.number().int().positive().default(2000),
   CRON_DEMO: bool.default('0'),
   RETRASO_UMBRAL_HORAS: z.coerce.number().int().positive().default(6),
+
+  /** Endpoint del proveedor de rutas. */
+  OSRM_URL: z.string().default('https://router.project-osrm.org'),
+  /** Radio de confirmación automática de entrega. */
+  GEOCERCA_ACOPIO_M: z.coerce.number().int().positive().default(300),
+  /** Centro y radio de búsqueda de lugares. */
+  GEO_CENTRO_LAT: z.coerce.number().default(-1.03),
+  GEO_CENTRO_LON: z.coerce.number().default(-79.46),
+  GEO_RADIO_KM: z.coerce.number().positive().default(90),
 });
 
 export type Env = z.infer<typeof envSchema>;

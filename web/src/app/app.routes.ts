@@ -8,6 +8,9 @@ export const routes: Routes = [
   },
   {
     path: 'auth',
+    // Se precarga en segundo plano (ver PrecargaSelectiva): el login/registro
+    // debe abrir al instante desde la landing, sin esperar a descargar el chunk.
+    data: { preload: true },
     loadChildren: () => import('./auth/auth.routes').then((m) => m.authRoutes),
   },
   {

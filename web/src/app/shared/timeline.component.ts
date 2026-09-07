@@ -9,9 +9,9 @@ const LABEL: Record<EstadoFlete, string> = {
   EN_RUTA: 'En ruta al centro de acopio',
   ENTREGADO: 'Entregado',
   CANCELADO: 'Cancelado',
+  INCIDENCIA: 'Incidencia en ruta',
 };
 
-/** Línea de tiempo vertical de los estados de un flete. */
 @Component({
   selector: 'app-timeline',
   imports: [DatePipe],

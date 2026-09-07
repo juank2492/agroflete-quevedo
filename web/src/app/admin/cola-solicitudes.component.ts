@@ -40,7 +40,17 @@ import { zonaLabel } from '../shared/zona';
             <tbody>
               @for (s of pendientes(); track s.id) {
                 <tr>
-                  <td>{{ s.cultivo | titlecase }} · {{ s.pesoTon }} t</td>
+                  <td>
+                    {{ s.cultivoNombre }} · {{ s.pesoTon }} t
+                    @if (s.reasignacionPorIncidencia) {
+                      <span
+                        class="mt-1 block text-xs text-error"
+                        [title]="s.motivoIncidencia || ''"
+                      >
+                        ⚠ Reasignación por incidencia
+                      </span>
+                    }
+                  </td>
                   <td>{{ label(s.zona) }}</td>
                   <td class="max-w-[12rem] truncate">{{ s.acopioNombre }}</td>
                   <td class="text-right font-semibold text-primary">
@@ -60,11 +70,10 @@ import { zonaLabel } from '../shared/zona';
       }
     </div>
 
-    <!-- Diálogo de asignación -->
     <dialog class="modal" [class.modal-open]="!!seleccion()">
       <div class="modal-box">
         @if (seleccion(); as s) {
-          <h3 class="text-lg font-bold">Asignar {{ s.cultivo | titlecase }} · {{ s.pesoTon }} t</h3>
+          <h3 class="text-lg font-bold">Asignar {{ s.cultivoNombre }} · {{ s.pesoTon }} t</h3>
           <p class="mt-1 text-sm text-base-content/60">
             {{ label(s.zona) }} → {{ s.acopioNombre }}
           </p>

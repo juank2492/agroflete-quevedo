@@ -4,10 +4,11 @@ import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../core/auth.service';
 import { apiMessage } from '../core/http-error';
 import { UiFeedbackService } from '../core/ui-feedback.service';
+import { PasswordFieldComponent } from '../shared/password-field.component';
 
 @Component({
   selector: 'app-login',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, PasswordFieldComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h1 class="text-2xl font-bold">Iniciar sesión</h1>
@@ -32,26 +33,25 @@ import { UiFeedbackService } from '../core/ui-feedback.service';
         }
       </label>
 
-      <label class="form-control w-full">
-        <span class="label-text mb-1">Contraseña</span>
-        <input
-          type="password"
-          formControlName="password"
-          autocomplete="current-password"
-          class="input input-bordered w-full"
-          [class.input-error]="invalido('password')"
-        />
-        @if (invalido('password')) {
-          <span class="mt-1 text-xs text-error">Requerida</span>
-        }
-      </label>
+      <app-password-field
+        [control]="form.controls.password"
+        label="Contraseña"
+        autocomplete="current-password"
+        error="Requerida"
+      />
 
-      <button type="submit" class="btn btn-primary btn-block rounded-full" [disabled]="cargando()">
-        @if (cargando()) {
-          <span class="loading loading-spinner loading-sm"></span>
-        }
-        Entrar
-      </button>
+      <div class="pt-2">
+        <button
+          type="submit"
+          class="btn btn-primary btn-block rounded-full"
+          [disabled]="cargando()"
+        >
+          @if (cargando()) {
+            <span class="loading loading-spinner loading-sm"></span>
+          }
+          Entrar
+        </button>
+      </div>
     </form>
 
     <p class="mt-4 text-center text-sm text-base-content/70">

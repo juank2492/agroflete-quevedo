@@ -17,7 +17,9 @@ export async function asignarFlete(
   ctx: AppContext,
   adminId: string,
   input: AsignarFleteRequest,
+  opts?: { auto?: boolean },
 ): Promise<Flete> {
+  const auto = opts?.auto === true;
   const solicitud = await ctx.repos.solicitudes.porId(input.solicitudId);
   if (!solicitud) throw new NotFoundError('Solicitud no encontrada');
   if (solicitud.estado !== 'PENDIENTE') {
@@ -37,19 +39,52 @@ export async function asignarFlete(
   }
 
   const ts = ctx.clock.nowIso();
+  const origen = solicitud.origen;
+  const destino = { lat: solicitud.acopioLat, lon: solicitud.acopioLon };
+  const transportista = await ctx.repos.usuarios.porId(vehiculo.transportistaId);
+
+  // La ruta es opcional: un fallo del proveedor no bloquea la asignación.
+  let vial: Partial<
+    Pick<Flete, 'rutaVial' | 'distanciaVialKm' | 'duracionEstimadaMin' | 'rutaAproximada'>
+  > = {};
+  try {
+    const r = await ctx.routing.calcularRuta(origen, destino);
+    vial = {
+      rutaVial: r.geometria,
+      distanciaVialKm: r.distanciaKm,
+      duracionEstimadaMin: r.duracionMin,
+      rutaAproximada: r.aproximada,
+    };
+  } catch (err) {
+    ctx.logger.warn(
+      { err, solicitudId: solicitud.id },
+      'no se pudo calcular la ruta vial del flete',
+    );
+  }
+
   const flete: Flete = {
     id: ctx.ids.uuid(),
     solicitudId: solicitud.id,
     vehiculoId: vehiculo.id,
     transportistaId: vehiculo.transportistaId,
     productorId: solicitud.productorId,
+    origen,
+    ...(solicitud.origenNombre ? { origenNombre: solicitud.origenNombre } : {}),
+    destino,
+    cultivoNombre: solicitud.cultivoNombre,
+    pesoTon: solicitud.pesoTon,
+    acopioNombre: solicitud.acopioNombre,
+    ...(transportista ? { transportistaNombre: transportista.nombreCompleto } : {}),
+    vehiculoPlaca: vehiculo.placa,
     tarifa: solicitud.tarifaEstimada,
     estado: 'ASIGNADO',
     timeline: [{ estado: 'ASIGNADO', ts, actorId: adminId }],
     createdAt: ts,
+    ...vial,
+    ...(auto ? { auto: true } : {}),
   };
 
-  // Guardas optimistas: si otra asignación ganó la carrera, esto lanza ConflictError.
+  // Evita asignaciones concurrentes.
   await ctx.repos.solicitudes.actualizar(
     solicitud.id,
     { estado: 'ASIGNADA', fleteId: flete.id },
@@ -67,6 +102,7 @@ export async function asignarFlete(
     solicitudId: solicitud.id,
     productorId: solicitud.productorId,
     transportistaId: vehiculo.transportistaId,
+    ...(auto ? { auto: true } : {}),
   });
 
   return flete;

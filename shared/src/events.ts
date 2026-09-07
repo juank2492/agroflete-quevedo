@@ -1,10 +1,7 @@
 import { z } from 'zod';
 import { cultivoSchema, estadoFleteSchema, tipoEventoSchema } from './domain.js';
 
-/**
- * Contratos de los eventos de dominio que viajan por el outbox (local) y, más
- * adelante, por EventBridge. El `payload` se valida con estos esquemas.
- */
+/** Contratos de eventos de dominio validados por sus esquemas. */
 export const eventPayloadSchemas = {
   UsuarioRegistrado: z.object({
     userId: z.string(),
@@ -26,6 +23,7 @@ export const eventPayloadSchemas = {
     solicitudId: z.string(),
     productorId: z.string(),
     transportistaId: z.string(),
+    auto: z.boolean().optional(),
   }),
   EstadoFleteCambiado: z.object({
     fleteId: z.string(),
@@ -33,17 +31,50 @@ export const eventPayloadSchemas = {
     productorId: z.string(),
     transportistaId: z.string(),
     estado: estadoFleteSchema,
+    motivo: z.string().optional(),
   }),
   EntregaConfirmada: z.object({
     fleteId: z.string(),
     solicitudId: z.string(),
     productorId: z.string(),
     transportistaId: z.string(),
+    acopioId: z.string(),
+    cultivo: z.string(),
+    pesoTon: z.number(),
   }),
   RetrasoDetectado: z.object({
     solicitudId: z.string(),
     productorId: z.string(),
     horasEspera: z.number(),
+  }),
+  IncidenciaEnRuta: z.object({
+    fleteId: z.string(),
+    solicitudId: z.string(),
+    productorId: z.string(),
+    transportistaId: z.string(),
+    motivo: z.string(),
+  }),
+  StockBajo: z.object({
+    acopioId: z.string(),
+    acopioNombre: z.string(),
+    cultivo: z.string(),
+    cultivoNombre: z.string(),
+    cantidadActual: z.number(),
+    umbral: z.number(),
+  }),
+  StockAlto: z.object({
+    acopioId: z.string(),
+    acopioNombre: z.string(),
+    cultivo: z.string(),
+    cultivoNombre: z.string(),
+    cantidadActual: z.number(),
+    umbral: z.number(),
+  }),
+  TransportistaCreado: z.object({
+    userId: z.string(),
+    email: z.string(),
+    nombreCompleto: z.string(),
+    passwordTemporal: z.string(),
   }),
 } as const;
 

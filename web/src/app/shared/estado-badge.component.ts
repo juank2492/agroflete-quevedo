@@ -1,26 +1,22 @@
 import { ChangeDetectionStrategy, Component, Input, computed, signal } from '@angular/core';
-import type { EstadoFlete, EstadoSolicitud, EstadoVehiculo } from '@agroflete/shared';
+import { ESTADO_LABEL, type EstadoCualquiera } from './estado-labels';
 
-type Estado = EstadoSolicitud | EstadoFlete | EstadoVehiculo;
-
-const MAP: Record<Estado, { clase: string; label: string }> = {
-  // Solicitud
-  PENDIENTE: { clase: 'badge-warning', label: 'Pendiente' },
-  ASIGNADA: { clase: 'badge-info', label: 'Asignada' },
-  EN_PROCESO: { clase: 'badge-info', label: 'En proceso' },
-  COMPLETADA: { clase: 'badge-success', label: 'Completada' },
-  CANCELADA: { clase: 'badge-ghost', label: 'Cancelada' },
-  // Flete
-  ASIGNADO: { clase: 'badge-info', label: 'Asignado' },
-  EN_CAMINO_ORIGEN: { clase: 'badge-info', label: 'En camino al origen' },
-  CARGANDO: { clase: 'badge-info', label: 'Cargando' },
-  EN_RUTA: { clase: 'badge-info', label: 'En ruta' },
-  ENTREGADO: { clase: 'badge-success', label: 'Entregado' },
-  CANCELADO: { clase: 'badge-ghost', label: 'Cancelado' },
-  // Vehículo
-  DISPONIBLE: { clase: 'badge-success', label: 'Disponible' },
-  OCUPADO: { clase: 'badge-info', label: 'Ocupado' },
-  INACTIVO: { clase: 'badge-ghost', label: 'Inactivo' },
+const CLASE: Record<EstadoCualquiera, string> = {
+  PENDIENTE: 'badge-warning',
+  ASIGNADA: 'badge-info',
+  EN_PROCESO: 'badge-info',
+  COMPLETADA: 'badge-success',
+  CANCELADA: 'badge-ghost',
+  ASIGNADO: 'badge-info',
+  EN_CAMINO_ORIGEN: 'badge-info',
+  CARGANDO: 'badge-info',
+  EN_RUTA: 'badge-info',
+  ENTREGADO: 'badge-success',
+  CANCELADO: 'badge-ghost',
+  INCIDENCIA: 'badge-error',
+  DISPONIBLE: 'badge-success',
+  OCUPADO: 'badge-info',
+  INACTIVO: 'badge-ghost',
 };
 
 @Component({
@@ -29,11 +25,12 @@ const MAP: Record<Estado, { clase: string; label: string }> = {
   template: `<span class="badge {{ info().clase }}">{{ info().label }}</span>`,
 })
 export class EstadoBadgeComponent {
-  private readonly _estado = signal<Estado>('PENDIENTE');
-  @Input({ required: true }) set estado(v: Estado) {
+  private readonly _estado = signal<EstadoCualquiera>('PENDIENTE');
+  @Input({ required: true }) set estado(v: EstadoCualquiera) {
     this._estado.set(v);
   }
-  protected readonly info = computed(
-    () => MAP[this._estado()] ?? { clase: 'badge-ghost', label: this._estado() },
-  );
+  protected readonly info = computed(() => {
+    const e = this._estado();
+    return { clase: CLASE[e] ?? 'badge-ghost', label: ESTADO_LABEL[e] ?? e };
+  });
 }

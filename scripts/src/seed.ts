@@ -1,14 +1,4 @@
-/**
- * Siembra de datos de demo (idempotente: ids estables, sobrescribe).
- * Contraseña de todos los usuarios: Agroflete2026
- *
- *  - Reglas de tarifa por defecto
- *  - 4 centros de acopio reales de la zona de Quevedo
- *  - Usuarios: admin + 2 productores + 2 transportistas (confirmados)
- *  - 4 vehículos repartidos por zona
- *  - ~9 solicitudes en distintos estados + 4 fletes con línea de tiempo
- *    (para que /a/metricas y el guion de demo tengan datos coherentes)
- */
+/** Siembra datos de demo de forma idempotente. */
 import bcrypt from 'bcryptjs';
 import { BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
 import {
@@ -132,6 +122,24 @@ const VEHICULOS = [
     zona: 'quevedo-norte',
     estado: 'DISPONIBLE',
   },
+  {
+    id: 'veh-5',
+    transportistaId: 'seed-transportista-2',
+    placa: 'LBF-5505',
+    tipo: 'plataforma',
+    capacidadTon: 22,
+    zona: 'buena-fe',
+    estado: 'DISPONIBLE',
+  },
+  {
+    id: 'veh-6',
+    transportistaId: 'seed-transportista',
+    placa: 'PQV-6606',
+    tipo: 'camion',
+    capacidadTon: 15,
+    zona: 'mocache',
+    estado: 'DISPONIBLE',
+  },
 ] as const;
 
 interface SeedSolicitud {
@@ -252,6 +260,7 @@ interface SeedFlete {
   transportistaId: string;
   estado: EstadoFlete;
   pasos: EstadoFlete[];
+  auto?: boolean;
 }
 
 const FLETES: SeedFlete[] = [
@@ -270,6 +279,7 @@ const FLETES: SeedFlete[] = [
     transportistaId: 'seed-transportista-2',
     estado: 'EN_RUTA',
     pasos: ['ASIGNADO', 'EN_CAMINO_ORIGEN', 'CARGANDO', 'EN_RUTA'],
+    auto: true,
   },
   {
     id: 'flete-3',
@@ -289,12 +299,68 @@ const FLETES: SeedFlete[] = [
   },
 ];
 
+const cultivoDe = (clave: string) => R.cultivos.find((c) => c.clave === clave);
+
+const c5 = (n: number) => Math.round(n * 1e5) / 1e5;
+const RUTA_FLETE_2 = (() => {
+  const from = { lat: -0.8, lon: -79.42 };
+  const to = { lat: -0.8931, lon: -79.4869 };
+  const n = 6;
+  return Array.from({ length: n }, (_, i) => {
+    const t = i / (n - 1);
+    return {
+      lat: c5(from.lat + (to.lat - from.lat) * t * 0.62 + (Math.random() - 0.5) * 0.003),
+      lon: c5(from.lon + (to.lon - from.lon) * t * 0.62 + (Math.random() - 0.5) * 0.003),
+      ts: hAtras(2 - i * 0.25),
+      velocidad: 40 + Math.round(Math.random() * 20),
+    };
+  });
+})();
+
+const STOCKS = [
+  {
+    acopioId: 'acopio-centro',
+    cultivo: 'maiz',
+    cantidadActual: 240,
+    umbralMinimo: 30,
+    umbralMaximo: 200,
+  },
+  {
+    acopioId: 'acopio-centro',
+    cultivo: 'banano',
+    cantidadActual: 80,
+    umbralMinimo: 20,
+    umbralMaximo: 150,
+  },
+  {
+    acopioId: 'acopio-san-camilo',
+    cultivo: 'maiz',
+    cantidadActual: 12,
+    umbralMinimo: 40,
+    umbralMaximo: 180,
+  },
+  {
+    acopioId: 'acopio-mocache',
+    cultivo: 'maiz',
+    cantidadActual: 95,
+    umbralMinimo: 0,
+    umbralMaximo: 0,
+  },
+  {
+    acopioId: 'acopio-buena-fe',
+    cultivo: 'banano',
+    cantidadActual: 60,
+    umbralMinimo: 15,
+    umbralMaximo: 120,
+  },
+];
+
 function tarifaDe(s: SeedSolicitud): { distanciaKm: number; tarifa: number } {
   const acopio = acopioPorId[s.acopioId]!;
   const distanciaKm = round2(
     haversineKm(s.origen, { lat: acopio.lat, lon: acopio.lon }) * R.factorSinuosidad,
   );
-  const factor = s.cultivo === 'banano' ? R.factorBanano : R.factorMaiz;
+  const factor = cultivoDe(s.cultivo)?.factor ?? 1;
   return { distanciaKm, tarifa: round2(R.tarifaBaseKm * distanciaKm * factor) };
 }
 
@@ -304,6 +370,7 @@ async function main(): Promise<void> {
 
   const items: Record<string, unknown>[] = [
     { PK: 'TARIFA#REGLAS', SK: 'VIGENTE', ...R },
+    { PK: 'AJUSTE#OPERACION', SK: 'VIGENTE', autoEmparejar: true },
 
     ...ACOPIOS.map((a) => ({ PK: 'CATALOGO#ACOPIOS', SK: `ACOPIO#${a.id}`, ...a })),
 
@@ -345,7 +412,10 @@ async function main(): Promise<void> {
         origen: s.origen,
         acopioId: s.acopioId,
         acopioNombre: acopio.nombre,
+        acopioLat: acopio.lat,
+        acopioLon: acopio.lon,
         cultivo: s.cultivo,
+        cultivoNombre: cultivoDe(s.cultivo)?.nombre ?? s.cultivo,
         pesoTon: s.pesoTon,
         zona: acopio.zona,
         distanciaKm,
@@ -359,6 +429,7 @@ async function main(): Promise<void> {
 
     ...FLETES.map((f) => {
       const s = solById[f.solicitudId]!;
+      const ac = acopioPorId[s.acopioId]!;
       const createdAt = hAtras(s.horasAtras - 0.5);
       const { tarifa } = tarifaDe(s);
       const timeline = f.pasos.map((estado, i) => ({
@@ -380,12 +451,34 @@ async function main(): Promise<void> {
         vehiculoId: f.vehiculoId,
         transportistaId: f.transportistaId,
         productorId: s.productorId,
+        origen: s.origen,
+        destino: { lat: ac.lat, lon: ac.lon },
         tarifa,
         estado: f.estado,
         timeline,
         createdAt,
+        ...(f.auto ? { auto: true } : {}),
+        ...(f.id === 'flete-2' ? { ultimaUbicacion: RUTA_FLETE_2[RUTA_FLETE_2.length - 1] } : {}),
       };
     }),
+
+    ...RUTA_FLETE_2.map((p) => ({
+      PK: 'FLETE#flete-2',
+      SK: `TRACK#${p.ts}`,
+      lat: p.lat,
+      lon: p.lon,
+      ts: p.ts,
+      velocidad: p.velocidad,
+    })),
+
+    ...STOCKS.map((st) => ({
+      PK: `ACOPIO#${st.acopioId}`,
+      SK: `STOCK#${st.cultivo}`,
+      cultivo: st.cultivo,
+      cantidadActual: st.cantidadActual,
+      umbralMinimo: st.umbralMinimo,
+      umbralMaximo: st.umbralMaximo,
+    })),
   ];
 
   for (let i = 0; i < items.length; i += 25) {
@@ -403,7 +496,7 @@ async function main(): Promise<void> {
   console.log(`  ${USUARIOS.length} usuarios (contraseña: ${PASSWORD})`);
   for (const u of USUARIOS) console.log(`    - ${u.email} (${u.rol})`);
   console.log(
-    `  ${VEHICULOS.length} vehículos · ${SOLICITUDES.length} solicitudes · ${FLETES.length} fletes`,
+    `  ${VEHICULOS.length} vehículos · ${SOLICITUDES.length} solicitudes · ${FLETES.length} fletes · ${STOCKS.length} filas de inventario`,
   );
 }
 

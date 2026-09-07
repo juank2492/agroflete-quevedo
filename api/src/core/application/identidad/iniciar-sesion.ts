@@ -8,6 +8,9 @@ export async function iniciarSesion(ctx: AppContext, input: LoginRequest): Promi
   const credencialesInvalidas = new ForbiddenError('Correo o contraseña incorrectos');
 
   if (!u) throw credencialesInvalidas;
+  if (u.estado === 'INACTIVO') {
+    throw new ForbiddenError('Tu cuenta está dada de baja. Contacta al administrador.');
+  }
   if (u.estado !== 'CONFIRMADO') {
     throw new ForbiddenError('Debes confirmar tu correo antes de iniciar sesión');
   }

@@ -7,7 +7,10 @@ function decodeJwt(token: string): JwtClaims | null {
   try {
     const payload = token.split('.')[1];
     if (!payload) return null;
-    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+    const bin = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+    // atob da una cadena binaria: hay que reinterpretarla como UTF-8 para
+    // que las tildes del nombre no salgan como mojibake ("Administración").
+    const json = new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
     return JSON.parse(json) as JwtClaims;
   } catch {
     return null;
@@ -25,6 +28,8 @@ function readToken(): string | null {
 @Injectable({ providedIn: 'root' })
 export class SessionStore {
   private readonly _token = signal<string | null>(readToken());
+  /** Nombre mostrado tras editar el perfil. */
+  private readonly _nombreOverride = signal<string | null>(null);
 
   readonly token = this._token.asReadonly();
   readonly claims = computed<JwtClaims | null>(() => {
@@ -36,7 +41,7 @@ export class SessionStore {
   });
   readonly isAuthenticated = computed(() => this.claims() !== null);
   readonly role = computed<Rol | null>(() => this.claims()?.role ?? null);
-  readonly nombre = computed(() => this.claims()?.name ?? '');
+  readonly nombre = computed(() => this._nombreOverride() ?? this.claims()?.name ?? '');
 
   set(token: string): void {
     try {
@@ -44,15 +49,21 @@ export class SessionStore {
     } catch {
       /* almacenamiento no disponible: la sesión vive solo en memoria */
     }
+    this._nombreOverride.set(null);
     this._token.set(token);
+  }
+
+  setNombre(nombre: string): void {
+    this._nombreOverride.set(nombre);
   }
 
   clear(): void {
     try {
       localStorage.removeItem(TOKEN_KEY);
     } catch {
-      /* noop */
+      // Almacenamiento no disponible (modo privado, etc.).
     }
+    this._nombreOverride.set(null);
     this._token.set(null);
   }
 

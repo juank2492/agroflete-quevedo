@@ -34,19 +34,29 @@ import { environment } from '../../environments/environment';
         />
       </label>
 
-      <label class="form-control w-full">
+      <div class="form-control w-full">
         <span class="label-text mb-1">Código</span>
-        <input
-          formControlName="codigo"
-          inputmode="numeric"
-          maxlength="6"
-          class="input input-bordered w-full tracking-[0.5em]"
-          [class.input-error]="invalido('codigo')"
-        />
+        <div class="flex gap-2" (paste)="pegar($event)">
+          @for (i of celdasIdx; track i) {
+            <input
+              [id]="'cod-' + i"
+              type="text"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              maxlength="1"
+              class="input input-bordered h-14 w-full p-0 text-center font-mono text-2xl"
+              [class.input-error]="invalido('codigo')"
+              [value]="celdas()[i]"
+              (input)="escribir(i, $any($event.target).value)"
+              (keydown)="tecla(i, $event)"
+              (focus)="$any($event.target).select()"
+            />
+          }
+        </div>
         @if (invalido('codigo')) {
           <span class="mt-1 text-xs text-error">Son 6 dígitos</span>
         }
-      </label>
+      </div>
 
       <button type="submit" class="btn btn-primary btn-block rounded-full" [disabled]="cargando()">
         @if (cargando()) {
@@ -71,7 +81,9 @@ export class ConfirmarComponent implements OnInit {
   protected readonly cargando = signal(false);
   protected readonly serverError = signal('');
 
-  /** Prellenado desde ?email= (withComponentInputBinding). */
+  protected readonly celdasIdx = [0, 1, 2, 3, 4, 5];
+  protected readonly celdas = signal<string[]>(['', '', '', '', '', '']);
+
   @Input() email?: string;
 
   protected readonly form = this.fb.nonNullable.group({
@@ -86,6 +98,41 @@ export class ConfirmarComponent implements OnInit {
   protected invalido(campo: 'email' | 'codigo'): boolean {
     const c = this.form.controls[campo];
     return c.invalid && (c.touched || c.dirty);
+  }
+
+  private sincronizar(): void {
+    this.form.controls.codigo.setValue(this.celdas().join(''));
+    this.form.controls.codigo.markAsDirty();
+  }
+
+  private foco(i: number): void {
+    document.getElementById(`cod-${i}`)?.focus();
+  }
+
+  protected escribir(i: number, valor: string): void {
+    const d = valor.replace(/\D/g, '').slice(-1);
+    this.celdas.update((c) => c.map((x, j) => (j === i ? d : x)));
+    this.sincronizar();
+    if (d && i < 5) this.foco(i + 1);
+  }
+
+  protected tecla(i: number, e: KeyboardEvent): void {
+    if (e.key === 'Backspace' && !this.celdas()[i] && i > 0) {
+      this.foco(i - 1);
+    } else if (e.key === 'ArrowLeft' && i > 0) {
+      this.foco(i - 1);
+    } else if (e.key === 'ArrowRight' && i < 5) {
+      this.foco(i + 1);
+    }
+  }
+
+  protected pegar(e: ClipboardEvent): void {
+    const texto = (e.clipboardData?.getData('text') ?? '').replace(/\D/g, '').slice(0, 6);
+    if (!texto) return;
+    e.preventDefault();
+    this.celdas.set(Array.from({ length: 6 }, (_, j) => texto[j] ?? ''));
+    this.sincronizar();
+    this.foco(Math.min(texto.length, 5));
   }
 
   enviar(): void {

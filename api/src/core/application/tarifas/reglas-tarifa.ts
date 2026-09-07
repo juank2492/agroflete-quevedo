@@ -10,21 +10,15 @@ export function obtenerReglasTarifa(ctx: AppContext): Promise<ReglasTarifa> {
   return ctx.repos.reglas.obtener();
 }
 
-/** Fusiona el patch sobre las reglas vigentes, valida el resultado completo y lo persiste. */
+/** Actualiza y valida las reglas vigentes. */
 export async function actualizarReglasTarifa(
   ctx: AppContext,
   patch: ActualizarReglasRequest,
   actorId: string,
 ): Promise<ReglasTarifa> {
   const actuales = await ctx.repos.reglas.obtener();
-  const fusion: ReglasTarifa = {
-    ...actuales,
-    ...patch,
-    temporadas: {
-      maiz: patch.temporadas?.maiz ?? actuales.temporadas.maiz,
-      banano: patch.temporadas?.banano ?? actuales.temporadas.banano,
-    },
-  };
+  // `cultivos` se reemplaza entero cuando viene en el patch; el resto se fusiona.
+  const fusion: ReglasTarifa = { ...actuales, ...patch };
 
   const parsed = reglasTarifaSchema.safeParse(fusion);
   if (!parsed.success) {

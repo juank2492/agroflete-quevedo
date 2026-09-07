@@ -1,5 +1,6 @@
 @import '@fontsource-variable/inter/index.css';
 @import '@fontsource-variable/sora/index.css';
+@import 'leaflet/dist/leaflet.css';
 @import 'tailwindcss';
 
 @plugin 'daisyui' {

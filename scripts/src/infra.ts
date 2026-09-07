@@ -1,12 +1,4 @@
-/**
- * Levanta/baja la infraestructura local (DynamoDB Local + Mailpit).
- *
- * Usa `docker compose` (con el docker-compose.yml de la raíz) si el plugin está
- * disponible; si no, cae a `docker run` para no depender del plugin (p. ej. cuando
- * el daemon vive en WSL y el CLI de Windows es un puente sin compose).
- *
- * Puertos host: DynamoDB Local -> 8010 (el 8000 suele estar ocupado), Mailpit -> 1025/8025.
- */
+/** Gestiona los contenedores locales. */
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,7 +10,6 @@ interface Contenedor {
   name: string;
   image: string;
   args: string[];
-  /** Comando que va DESPUÉS de la imagen (override de CMD). */
   cmd: string[];
 }
 
@@ -27,8 +18,7 @@ const CONTENEDORES: Contenedor[] = [
     name: 'agroflete-dynamodb',
     image: 'amazon/dynamodb-local:2.5.2',
     args: ['-p', '8010:8000'],
-    // -sharedDb: una sola BD para todas las credenciales. -inMemory: sin volumen
-    // (los datos se pierden al bajar el contenedor; se re-ejecuta db:migrate + db:seed).
+    // La base local comparte los datos y vive en memoria.
     cmd: ['-jar', 'DynamoDBLocal.jar', '-sharedDb', '-inMemory'],
   },
   {
@@ -56,7 +46,6 @@ function docker(args: string[], inherit = true): { code: number; out: string } {
   return { code: r.status ?? 1, out: (r.stdout ?? '').trim() };
 }
 
-/** ¿Está disponible el subcomando `docker compose` (plugin v2)? */
 function hayCompose(): boolean {
   return docker(['compose', 'version'], false).code === 0;
 }
@@ -69,8 +58,6 @@ function urls(): void {
   console.log('\nDynamoDB Local: http://localhost:8010');
   console.log('Mailpit UI:     http://localhost:8025');
 }
-
-// --- Ruta `docker run` (respaldo sin plugin compose) --------------------------
 
 function estado(name: string): 'running' | 'stopped' | 'absent' {
   const { out } = docker(
@@ -117,8 +104,6 @@ function logsRun(): void {
   if (running[0]) docker(['logs', '-f', running[0]]);
   else console.log('No hay contenedores corriendo.');
 }
-
-// --- Comandos ----------------------------------------------------------------
 
 function up(): void {
   if (hayCompose()) {

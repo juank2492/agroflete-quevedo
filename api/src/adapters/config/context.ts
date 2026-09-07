@@ -2,11 +2,15 @@ import type { AppContext } from '../../core/app-context.js';
 import { makeLocalTokenService } from '../auth/local-jwt/token.service.js';
 import { bcryptHasher } from '../auth/local-jwt/password.hasher.js';
 import { makeOutboxEventBus } from '../events/local-outbox/event-bus.js';
+import { makePhotonGeocoding } from '../geo/photon/geocoding.js';
+import { makeOsrmRouting } from '../geo/osrm/routing.js';
 import { makeSmtpNotifier } from '../notify/smtp/notifier.js';
 import { TABLE, makeDocClient } from '../persistence/dynamo/client.js';
 import { makeAcopioRepository } from '../persistence/dynamo/acopio.repository.js';
+import { makeInventarioRepository } from '../persistence/dynamo/inventario.repository.js';
 import { makeFleteRepository } from '../persistence/dynamo/flete.repository.js';
 import { makeOutboxRepository } from '../persistence/dynamo/outbox.repository.js';
+import { makeAjustesRepository } from '../persistence/dynamo/ajustes.repository.js';
 import { makeReglasTarifaRepository } from '../persistence/dynamo/reglas-tarifa.repository.js';
 import { makeSolicitudRepository } from '../persistence/dynamo/solicitud.repository.js';
 import { makeUsuarioRepository } from '../persistence/dynamo/usuario.repository.js';
@@ -23,7 +27,9 @@ export function buildContext(): AppContext {
   const outbox = makeOutboxRepository(doc, TABLE);
   const usuarios = makeUsuarioRepository(doc, TABLE);
   const acopios = makeAcopioRepository(doc, TABLE);
+  const inventario = makeInventarioRepository(doc, TABLE);
   const reglas = makeReglasTarifaRepository(doc, TABLE);
+  const ajustes = makeAjustesRepository(doc, TABLE);
   const solicitudes = makeSolicitudRepository(doc, TABLE);
   const vehiculos = makeVehiculoRepository(doc, TABLE);
   const fletes = makeFleteRepository(doc, TABLE);
@@ -35,6 +41,8 @@ export function buildContext(): AppContext {
     config: {
       confCodeTtlMs: env.CONF_CODE_TTL_MINUTES * 60_000,
       retrasoUmbralHoras: env.RETRASO_UMBRAL_HORAS,
+      adminEmail: env.ADMIN_EMAIL,
+      geocercaAcopioM: env.GEOCERCA_ACOPIO_M,
     },
     tokens: makeLocalTokenService(env.JWT_SECRET, env.JWT_EXPIRES_IN),
     hasher: bcryptHasher,
@@ -47,6 +55,21 @@ export function buildContext(): AppContext {
       pass: env.SMTP_PASS,
       secure: env.SMTP_SECURE,
     }),
-    repos: { usuarios, outbox, acopios, reglas, solicitudes, vehiculos, fletes },
+    geocoding: makePhotonGeocoding({
+      centro: { lat: env.GEO_CENTRO_LAT, lon: env.GEO_CENTRO_LON },
+      radioKm: env.GEO_RADIO_KM,
+    }),
+    routing: makeOsrmRouting({ baseUrl: env.OSRM_URL }),
+    repos: {
+      usuarios,
+      outbox,
+      acopios,
+      inventario,
+      reglas,
+      ajustes,
+      solicitudes,
+      vehiculos,
+      fletes,
+    },
   };
 }

@@ -1,3 +1,4 @@
+import type { GeocodingPort, RoutingPort } from './ports/geo.js';
 import type { Repositories } from './ports/repositories.js';
 import type {
   Clock,
@@ -9,16 +10,16 @@ import type {
   TokenService,
 } from './ports/services.js';
 
-/** Perillas de negocio configurables (no infraestructura). */
+/** Configuración de negocio. */
 export interface AppConfig {
   confCodeTtlMs: number;
   retrasoUmbralHoras: number;
+  adminEmail: string;
+  /** Radio de confirmación automática de entrega. */
+  geocercaAcopioM: number;
 }
 
-/**
- * Dependencias que reciben los casos de uso. Solo tipos de `core/ports` — el
- * ensamblado concreto vive en `adapters/config/context.ts`.
- */
+/** Dependencias recibidas por los casos de uso. */
 export interface AppContext {
   logger: Logger;
   clock: Clock;
@@ -28,5 +29,7 @@ export interface AppContext {
   hasher: PasswordHasher;
   events: EventBus;
   notifier: Notifier;
+  geocoding: GeocodingPort;
+  routing: RoutingPort;
   repos: Repositories;
 }

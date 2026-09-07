@@ -6,5 +6,5 @@ describe('bcrypt password hasher', () => {
     expect(hash).not.toBe('Secreta123');
     expect(await bcryptHasher.compare('Secreta123', hash)).toBe(true);
     expect(await bcryptHasher.compare('otra', hash)).toBe(false);
-  }, 20_000); // bcryptjs (JS puro) a 12 rondas puede tardar en máquinas cargadas
+  }, 20_000); // bcryptjs puede tardar con 12 rondas.
 });

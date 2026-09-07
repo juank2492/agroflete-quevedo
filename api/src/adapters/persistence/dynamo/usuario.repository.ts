@@ -2,6 +2,7 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
+  ScanCommand,
   UpdateCommand,
   type DynamoDBDocumentClient,
 } from '@aws-sdk/lib-dynamodb';
@@ -73,6 +74,18 @@ export function makeUsuarioRepository(
       );
       const item = res.Items?.[0];
       return item ? fromItem(item) : null;
+    },
+
+    async listarPorRol(rol) {
+      const res = await doc.send(
+        new ScanCommand({
+          TableName: table,
+          FilterExpression: 'SK = :sk AND #rol = :rol',
+          ExpressionAttributeNames: { '#rol': 'rol' },
+          ExpressionAttributeValues: { ':sk': SK, ':rol': rol },
+        }),
+      );
+      return (res.Items ?? []).map(fromItem);
     },
 
     async actualizar(id, patch) {

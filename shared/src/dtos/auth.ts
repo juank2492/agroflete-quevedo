@@ -43,13 +43,29 @@ export const perfilPublicoSchema = z.object({
 });
 export type PerfilPublico = z.infer<typeof perfilPublicoSchema>;
 
+export const actualizarPerfilRequestSchema = z
+  .object({
+    nombreCompleto: z.string().trim().min(3, 'Nombre demasiado corto').max(120).optional(),
+    telefono: telefonoSchema.optional(),
+  })
+  .refine((v) => v.nombreCompleto !== undefined || v.telefono !== undefined, {
+    message: 'No hay cambios que guardar',
+  });
+export type ActualizarPerfilRequest = z.infer<typeof actualizarPerfilRequestSchema>;
+
+export const cambiarPasswordRequestSchema = z.object({
+  passwordActual: z.string().min(1, 'Contraseña actual requerida'),
+  passwordNueva: passwordSchema,
+});
+export type CambiarPasswordRequest = z.infer<typeof cambiarPasswordRequestSchema>;
+
 export const loginResponseSchema = z.object({
   token: z.string(),
   perfil: perfilPublicoSchema,
 });
 export type LoginResponse = z.infer<typeof loginResponseSchema>;
 
-/** Claims del JWT emitido por el módulo de auth local (y, más adelante, por Cognito). */
+/** Claims del JWT. */
 export const jwtClaimsSchema = z.object({
   sub: z.string(),
   email: z.string(),

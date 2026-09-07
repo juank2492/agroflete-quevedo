@@ -1,8 +1,12 @@
 import {
+  actualizarPerfilRequestSchema,
+  cambiarPasswordRequestSchema,
   confirmarRequestSchema,
   loginRequestSchema,
   registroRequestSchema,
 } from '@agroflete/shared';
+import { actualizarPerfil } from '../../../core/application/identidad/actualizar-perfil.js';
+import { cambiarPassword } from '../../../core/application/identidad/cambiar-password.js';
 import { confirmarUsuario } from '../../../core/application/identidad/confirmar-usuario.js';
 import { iniciarSesion } from '../../../core/application/identidad/iniciar-sesion.js';
 import { obtenerPerfil } from '../../../core/application/identidad/obtener-perfil.js';
@@ -46,6 +50,25 @@ export const authRoutes: RouteDef[] = [
     handler: async (req, ctx) => {
       if (!req.user) throw new UnauthenticatedError();
       return ok(await obtenerPerfil(ctx, req.user.sub));
+    },
+  },
+  {
+    method: 'PATCH',
+    path: '/perfil',
+    handler: async (req, ctx) => {
+      if (!req.user) throw new UnauthenticatedError();
+      const input = actualizarPerfilRequestSchema.parse(req.body);
+      return ok(await actualizarPerfil(ctx, req.user.sub, input));
+    },
+  },
+  {
+    method: 'POST',
+    path: '/perfil/password',
+    handler: async (req, ctx) => {
+      if (!req.user) throw new UnauthenticatedError();
+      const input = cambiarPasswordRequestSchema.parse(req.body);
+      await cambiarPassword(ctx, req.user.sub, input);
+      return noContent();
     },
   },
 ];
