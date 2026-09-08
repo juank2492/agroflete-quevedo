@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
-import { DatePipe, DecimalPipe } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { pagoDe, type Solicitud } from '@agroflete/shared';
 import { PagoService } from '../core/pago.service';
@@ -8,7 +8,7 @@ import { apiMessage } from '../core/http-error';
 
 @Component({
   selector: 'app-pagos-admin',
-  imports: [DatePipe, DecimalPipe, FormsModule],
+  imports: [DecimalPipe, FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="mx-auto max-w-3xl">

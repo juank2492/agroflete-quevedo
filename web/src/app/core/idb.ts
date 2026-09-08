@@ -52,6 +52,7 @@ export const idb = {
     try {
       await conStore(store, 'readwrite', (s) => s.delete(id));
     } catch {
+      // Nada que hacer: si no se pudo borrar, se reintenta en el próximo flush.
     }
   },
 };
