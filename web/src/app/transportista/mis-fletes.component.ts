@@ -11,9 +11,12 @@ import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
   TRANSICIONES_FLETE,
+  haversineKm,
+  interpolarRuta,
   puedeReportarIncidencia,
   type EstadoFlete,
   type Flete,
+  type GravedadIncidencia,
   type LatLon,
 } from '@agroflete/shared';
 import { FleteService } from '../core/flete.service';
@@ -26,6 +29,7 @@ import { TimelineComponent } from '../shared/timeline.component';
 import { MapaFleteComponent } from '../shared/mapa-flete.component';
 import { FiltroChipsComponent, type OpcionFiltro } from '../shared/filtro-chips.component';
 import { PaginacionComponent, paginar } from '../shared/paginacion.component';
+import { sondear } from '../core/sondeo';
 
 const LABEL_ACCION: Record<EstadoFlete, string> = {
   ASIGNADO: 'Asignado',
@@ -131,6 +135,19 @@ type FiltroFlete = 'TODOS' | 'EN_CURSO' | 'ENTREGADO' | 'CANCELADO' | 'INCIDENCI
                       >
                         {{ liveId() === f.id ? 'Detener envío en vivo' : 'Enviar en vivo' }}
                       </button>
+                      <button
+                        class="btn btn-sm rounded-full"
+                        [class.btn-primary]="simulandoId() === f.id"
+                        [disabled]="simBtnDeshabilitado(f)"
+                        [title]="
+                          simulandoId() === f.id
+                            ? ''
+                            : 'Disponible cuando el vehículo sale hacia el acopio con la carga'
+                        "
+                        (click)="toggleSimulacion(f)"
+                      >
+                        {{ simulandoId() === f.id ? 'Detener simulación' : 'Iniciar simulación' }}
+                      </button>
                     </div>
                   </div>
                 }
@@ -216,36 +233,79 @@ type FiltroFlete = 'TODOS' | 'EN_CURSO' | 'ENTREGADO' | 'CANCELADO' | 'INCIDENCI
     <dialog class="modal" [class.modal-open]="!!incidenciaDe()">
       <div class="modal-box">
         <h3 class="text-lg font-bold">Reportar incidencia en ruta</h3>
-        <p class="mt-1 text-sm text-base-content/60">
-          La carga volverá a la cola del administrador para reasignarla a otro vehículo.
-        </p>
+
+        <div class="mt-3 space-y-2">
+          <label
+            class="flex cursor-pointer items-start gap-3 rounded-field border p-3"
+            [class.border-primary]="gravedad() === 'leve'"
+            [class.border-base-300]="gravedad() !== 'leve'"
+          >
+            <input
+              type="radio"
+              class="radio radio-sm mt-0.5"
+              name="grav"
+              [checked]="gravedad() === 'leve'"
+              (change)="gravedad.set('leve')"
+            />
+            <span>
+              <span class="text-sm font-medium">El vehículo puede continuar</span>
+              <span class="block text-xs text-base-content/60">
+                Pinchazo resuelto, parada breve… El flete sigue y se avisa al productor de la
+                demora.
+              </span>
+            </span>
+          </label>
+          <label
+            class="flex cursor-pointer items-start gap-3 rounded-field border p-3"
+            [class.border-primary]="gravedad() === 'grave'"
+            [class.border-base-300]="gravedad() !== 'grave'"
+          >
+            <input
+              type="radio"
+              class="radio radio-sm mt-0.5"
+              name="grav"
+              [checked]="gravedad() === 'grave'"
+              (change)="gravedad.set('grave')"
+            />
+            <span>
+              <span class="text-sm font-medium">Necesita reasignación</span>
+              <span class="block text-xs text-base-content/60">
+                Avería, accidente, vía cerrada. La carga vuelve a la cola del administrador.
+              </span>
+            </span>
+          </label>
+        </div>
 
         <label class="form-control mt-4 w-full">
           <span class="label-text mb-1">¿Qué pasó?</span>
           <textarea
             class="textarea textarea-bordered w-full"
             rows="3"
-            placeholder="Avería del motor, vía cerrada, accidente…"
+            placeholder="Describe brevemente lo ocurrido…"
             [(ngModel)]="motivo"
           ></textarea>
         </label>
 
-        <label class="mt-3 flex cursor-pointer items-center gap-3">
-          <input type="checkbox" class="checkbox checkbox-sm" [(ngModel)]="fueraDeServicio" />
-          <span class="text-sm">El vehículo queda fuera de servicio (INACTIVO)</span>
-        </label>
+        @if (gravedad() === 'grave') {
+          <label class="mt-3 flex cursor-pointer items-center gap-3">
+            <input type="checkbox" class="checkbox checkbox-sm" [(ngModel)]="fueraDeServicio" />
+            <span class="text-sm">El vehículo queda fuera de servicio (INACTIVO)</span>
+          </label>
+        }
 
         <div class="modal-action">
           <button class="btn btn-ghost" (click)="cerrarIncidencia()">Cancelar</button>
           <button
-            class="btn btn-error rounded-full"
+            class="btn rounded-full"
+            [class.btn-warning]="gravedad() === 'leve'"
+            [class.btn-error]="gravedad() === 'grave'"
             [disabled]="motivo().trim().length < 3 || enviandoInc()"
             (click)="confirmarIncidencia()"
           >
             @if (enviandoInc()) {
               <span class="loading loading-spinner loading-sm"></span>
             }
-            Reportar
+            {{ gravedad() === 'leve' ? 'Reportar demora' : 'Reportar incidencia' }}
           </button>
         </div>
       </div>
@@ -300,6 +360,7 @@ export class MisFletesComponent implements OnInit, OnDestroy {
 
   protected readonly incidenciaDe = signal<Flete | null>(null);
   protected readonly motivo = signal('');
+  protected readonly gravedad = signal<GravedadIncidencia>('leve');
   protected readonly fueraDeServicio = signal(false);
   protected readonly enviandoInc = signal(false);
 
@@ -308,12 +369,31 @@ export class MisFletesComponent implements OnInit, OnDestroy {
   private watchId: number | null = null;
   private ultimoEnvio = 0;
 
+  /** Flete cuya ruta se está simulando (o null). */
+  protected readonly simulandoId = signal<string | null>(null);
+  private simCancelar = false;
+
+  constructor() {
+    // Refleja reasignaciones del admin y otros cambios sin recargar la página.
+    sondear(15_000, () => {
+      if (
+        !this.cargando() &&
+        this.simulandoId() === null &&
+        this.liveId() === null &&
+        !this.actualizandoId()
+      ) {
+        this.recargar(true);
+      }
+    });
+  }
+
   ngOnInit(): void {
     this.recargar();
   }
 
   ngOnDestroy(): void {
     this.detenerWatch();
+    this.simCancelar = true;
   }
 
   protected enCurso(estado: EstadoFlete): boolean {
@@ -337,8 +417,8 @@ export class MisFletesComponent implements OnInit, OnDestroy {
     return f.rutaVial?.length ? f.rutaVial : (this.rutasVial()[f.id] ?? []);
   }
 
-  private recargar(): void {
-    this.cargando.set(true);
+  private recargar(silencioso = false): void {
+    if (!silencioso) this.cargando.set(true);
     this.service.listar().subscribe({
       next: (list) => {
         this.fletes.set(list);
@@ -482,6 +562,7 @@ export class MisFletesComponent implements OnInit, OnDestroy {
 
   abrirIncidencia(f: Flete): void {
     this.motivo.set('');
+    this.gravedad.set('leve');
     this.fueraDeServicio.set(false);
     this.incidenciaDe.set(f);
   }
@@ -492,19 +573,26 @@ export class MisFletesComponent implements OnInit, OnDestroy {
 
   confirmarIncidencia(): void {
     const f = this.incidenciaDe();
+    const grave = this.gravedad() === 'grave';
     if (!f || this.motivo().trim().length < 3) return;
     this.enviandoInc.set(true);
     this.service
       .reportarIncidencia(f.id, {
         motivo: this.motivo().trim(),
-        vehiculoFueraDeServicio: this.fueraDeServicio(),
+        gravedad: this.gravedad(),
+        vehiculoFueraDeServicio: grave && this.fueraDeServicio(),
       })
       .subscribe({
         next: () => {
           this.enviandoInc.set(false);
           this.cerrarIncidencia();
-          this.detenerWatch();
-          this.feedback.success('Incidencia reportada. La carga volvió a la cola.');
+          if (grave) {
+            this.detenerWatch();
+            this.simCancelar = true;
+            this.feedback.success('Incidencia reportada. La carga volvió a la cola.');
+          } else {
+            this.feedback.success('Demora registrada. Avisamos al productor.');
+          }
           this.recargar();
         },
         error: (err) => {
@@ -513,4 +601,78 @@ export class MisFletesComponent implements OnInit, OnDestroy {
         },
       });
   }
+
+  // --- Simulación del viaje al acopio ---
+
+  protected puedeIniciarSim(f: Flete): boolean {
+    return (
+      f.estado === 'EN_RUTA' &&
+      !!f.origen &&
+      !!f.destino &&
+      this.simulandoId() === null &&
+      this.liveId() === null
+    );
+  }
+
+  protected simBtnDeshabilitado(f: Flete): boolean {
+    return this.simulandoId() === f.id ? false : !this.puedeIniciarSim(f);
+  }
+
+  protected toggleSimulacion(f: Flete): void {
+    if (this.simulandoId() === f.id) {
+      this.simCancelar = true;
+      return;
+    }
+    if (this.puedeIniciarSim(f)) void this.simular(f);
+  }
+
+  private async simular(f: Flete): Promise<void> {
+    const ruta = this.rutaVialDe(f);
+    const base: LatLon[] =
+      ruta.length >= 2 ? ruta : f.origen && f.destino ? [f.origen, f.destino] : [];
+    if (base.length < 2) {
+      this.feedback.error('El flete no tiene una ruta para simular.');
+      return;
+    }
+    const PASO_MS = 900;
+    const puntos = interpolarRuta(base, 16);
+    this.simCancelar = false;
+    this.simulandoId.set(f.id);
+    this.feedback.success('Simulación en marcha: el vehículo avanza hacia el acopio.');
+
+    for (let i = 0; i < puntos.length && !this.simCancelar; i += 1) {
+      const p = puntos[i]!;
+      const sig = puntos[i + 1] ?? p;
+      const velocidad = Math.min(110, Math.round(haversineKm(p, sig) / (PASO_MS / 3_600_000)));
+      const entregado = await this.enviarSimulado(f.id, p.lat, p.lon, velocidad);
+      if (entregado) {
+        this.feedback.success('Llegada al acopio detectada · entrega confirmada.');
+        break;
+      }
+      if (i < puntos.length - 1) await dormir(PASO_MS);
+    }
+
+    this.simulandoId.set(null);
+    this.simCancelar = false;
+    this.recargar(true);
+  }
+
+  private enviarSimulado(
+    id: string,
+    lat: number,
+    lon: number,
+    velocidad: number,
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
+      this.service.registrarUbicacion(id, { lat, lon, velocidad }).subscribe({
+        next: (res) => {
+          this.recargar(true);
+          resolve(res.entregaDetectada);
+        },
+        error: () => resolve(false),
+      });
+    });
+  }
 }
+
+const dormir = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));

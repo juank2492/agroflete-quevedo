@@ -1,13 +1,21 @@
 import {
   puedeReportarIncidencia,
   type Flete,
+  type IncidenciaFlete,
   type JwtClaims,
   type RegistrarIncidenciaRequest,
 } from '@agroflete/shared';
 import type { AppContext } from '../../app-context.js';
 import { ConflictError, ForbiddenError, NotFoundError } from '../../domain/errors.js';
 
-/** Devuelve la solicitud a la cola y libera o inactiva el vehículo afectado. */
+/**
+ * Registra una incidencia en ruta.
+ *
+ * - `leve`: el vehículo sigue el viaje. El flete no cambia de estado; solo se
+ *   deja constancia y se avisa al productor de la demora.
+ * - `grave`: la carga vuelve a la cola del administrador y el vehículo se libera
+ *   (o se inactiva) para reasignar el flete a otro vehículo.
+ */
 export async function registrarIncidencia(
   ctx: AppContext,
   user: JwtClaims,
@@ -26,12 +34,28 @@ export async function registrarIncidencia(
   }
 
   const ts = ctx.clock.nowIso();
-  const incidencia = {
+  const leve = input.gravedad === 'leve';
+  const incidencia: IncidenciaFlete = {
     motivo: input.motivo,
     ts,
-    vehiculoFueraDeServicio: input.vehiculoFueraDeServicio,
+    gravedad: input.gravedad,
+    vehiculoFueraDeServicio: leve ? false : input.vehiculoFueraDeServicio,
   };
   const timeline = [...flete.timeline, { estado: 'INCIDENCIA' as const, ts, actorId: user.sub }];
+
+  if (leve) {
+    // El flete mantiene su estado; solo se deja el registro y se avisa.
+    await ctx.repos.fletes.actualizar(id, { timeline, incidencia }, { estadoActual: flete.estado });
+    await ctx.events.publish('IncidenciaEnRuta', {
+      fleteId: id,
+      solicitudId: flete.solicitudId,
+      productorId: flete.productorId,
+      transportistaId: flete.transportistaId,
+      motivo: input.motivo,
+      gravedad: 'leve',
+    });
+    return { ...flete, timeline, incidencia };
+  }
 
   await ctx.repos.fletes.actualizar(
     id,
@@ -56,6 +80,7 @@ export async function registrarIncidencia(
     productorId: flete.productorId,
     transportistaId: flete.transportistaId,
     motivo: input.motivo,
+    gravedad: 'grave',
   });
 
   return { ...flete, estado: 'INCIDENCIA', timeline, incidencia };

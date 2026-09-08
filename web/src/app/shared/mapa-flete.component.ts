@@ -20,47 +20,32 @@ import type * as L from 'leaflet';
 const COLOR_ORIGEN = '#64748b';
 const COLOR_DESTINO = '#2f9e5e';
 const COLOR_RUTA = '#1f7a45';
-const COLOR_CAMION = '#2563eb';
+const COLOR_CAMION = '#0f2417';
 
-/** Crea el marcador del vehículo con orientación opcional. */
+const CAMION_PATH =
+  'M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9l1.96 2.5H17V9.5h2.5zm-1.5 9c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z';
+
+/**
+ * Los estilos van en línea: Leaflet inserta este HTML fuera de la plantilla,
+ * donde las clases con encapsulación de Angular no aplican.
+ */
 function iconoCamionHtml(rumbo: number | null): string {
-  const flecha =
-    rumbo === null
-      ? ''
-      : `<span class="mf-flecha" style="transform:rotate(${rumbo}deg)">
-           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l6 15-6-3.6L6 18z"/></svg>
-         </span>`;
-  return `<div class="mf-camion">${flecha}</div>`;
+  const haciaOeste = rumbo !== null && rumbo > 180;
+  const flip = haciaOeste ? 'transform:scaleX(-1);' : '';
+  return (
+    `<div style="display:grid;place-items:center;box-sizing:border-box;` +
+    `width:30px;height:30px;border-radius:999px;background:${COLOR_CAMION};` +
+    `border:2.5px solid #fff;box-shadow:0 2px 6px rgb(15 36 23 / 0.4)">` +
+    `<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"` +
+    ` style="${flip}display:block">` +
+    `<path fill="#fff" d="${CAMION_PATH}"/></svg></div>`
+  );
 }
 
 /** Mapa de seguimiento con ruta, rastro y geocerca de entrega. */
 @Component({
   selector: 'app-mapa-flete',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  styles: [
-    `
-      .mf-camion {
-        display: grid;
-        place-items: center;
-        width: 30px;
-        height: 30px;
-        border-radius: 999px;
-        background: ${COLOR_CAMION};
-        border: 2px solid #fff;
-        box-shadow: 0 3px 10px rgb(37 99 235 / 0.5);
-      }
-      .mf-flecha {
-        display: grid;
-        place-items: center;
-        transition: transform 0.5s linear;
-      }
-      .mf-flecha svg {
-        width: 16px;
-        height: 16px;
-        fill: #fff;
-      }
-    `,
-  ],
   template: `
     <div class="relative h-64 w-full overflow-hidden rounded-box border border-base-300">
       <div #cont class="absolute inset-0 z-0"></div>
@@ -201,8 +186,8 @@ export class MapaFleteComponent implements OnDestroy {
       this.L.marker([camion.lat, camion.lon], {
         icon: this.L.divIcon({
           className: '',
-          iconSize: [34, 34],
-          iconAnchor: [17, 17],
+          iconSize: [32, 32],
+          iconAnchor: [16, 16],
           html: iconoCamionHtml(this.rumbo(camion)),
         }),
         zIndexOffset: 1000,

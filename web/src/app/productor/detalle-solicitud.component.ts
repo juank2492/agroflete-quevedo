@@ -232,15 +232,38 @@ export class DetalleSolicitudComponent implements OnInit {
 
   @Input() id!: string;
 
+  private tick = 0;
+
   ngOnInit(): void {
     this.recargar();
 
-    interval(15_000)
+    // Sondeo casi en vivo: sigue la posición del transportista cada 2 s mientras
+    // el flete está en curso, refresca el rastro y detecta la asignación cada 10 s.
+    interval(2_000)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
+        if (typeof document !== 'undefined' && document.hidden) return;
+        this.tick += 1;
         const f = this.flete();
-        if (f && this.enCurso()) this.cargarFlete(f.id);
+        if (f && this.enCurso()) {
+          this.seguirPosicion(f.id);
+          if (this.tick % 5 === 0) {
+            this.fleteService.ruta(f.id).subscribe({ next: (r) => this.ruta.set(r) });
+          }
+        } else if (this.tick % 5 === 0) {
+          this.recargar();
+        }
       });
+  }
+
+  /** Relee el flete (posición, estado, timeline) sin recargar toda la vista. */
+  private seguirPosicion(fleteId: string): void {
+    this.fleteService.obtener(fleteId).subscribe({
+      next: (f) => {
+        this.flete.set(f);
+        this.asegurarRuta(f);
+      },
+    });
   }
 
   protected recargar(): void {

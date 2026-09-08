@@ -25,6 +25,7 @@ import { TimelineComponent } from '../shared/timeline.component';
 import { FiltroChipsComponent, type OpcionFiltro } from '../shared/filtro-chips.component';
 import { PaginacionComponent, paginar } from '../shared/paginacion.component';
 import { estadoLabel } from '../shared/estado-labels';
+import { sondear } from '../core/sondeo';
 
 type Filtro = EstadoFlete | 'TODOS';
 
@@ -69,6 +70,7 @@ const REASIGNABLE = new Set<EstadoFlete>(['ASIGNADO', 'EN_CAMINO_ORIGEN', 'CARGA
             <thead>
               <tr>
                 <th>Carga</th>
+                <th>Productor</th>
                 <th>Transportista</th>
                 <th>Estado</th>
                 <th class="text-right">Tarifa</th>
@@ -92,6 +94,7 @@ const REASIGNABLE = new Set<EstadoFlete>(['ASIGNADO', 'EN_CAMINO_ORIGEN', 'CARGA
                       {{ f.createdAt | date: 'short' }}
                     </div>
                   </td>
+                  <td class="text-sm">{{ f.productorNombre ?? '—' }}</td>
                   <td class="text-sm">
                     <div>{{ f.transportistaNombre ?? '—' }}</div>
                     <div class="text-xs text-base-content/60">
@@ -159,6 +162,10 @@ const REASIGNABLE = new Set<EstadoFlete>(['ASIGNADO', 'EN_CAMINO_ORIGEN', 'CARGA
               · asignación automática
             }
           </p>
+          <p class="mt-1 text-sm">
+            <span class="text-base-content/60">Productor:</span>
+            <span class="font-medium">{{ f.productorNombre ?? '—' }}</span>
+          </p>
 
           <div class="mt-4 grid gap-4 sm:grid-cols-2">
             <div class="rounded-field border border-base-300 p-3">
@@ -205,8 +212,13 @@ const REASIGNABLE = new Set<EstadoFlete>(['ASIGNADO', 'EN_CAMINO_ORIGEN', 'CARGA
           }
           @if (f.incidencia; as inc) {
             <p class="mt-3 rounded-field bg-error/10 px-3 py-2 text-sm text-error">
-              <span class="font-semibold">Incidencia:</span> {{ inc.motivo }}
-              @if (inc.vehiculoFueraDeServicio) {
+              <span class="font-semibold">
+                Incidencia{{ inc.gravedad === 'leve' ? ' leve' : '' }}:
+              </span>
+              {{ inc.motivo }}
+              @if (inc.gravedad === 'leve') {
+                · el vehículo continuó el viaje
+              } @else if (inc.vehiculoFueraDeServicio) {
                 · vehículo fuera de servicio
               }
             </p>
@@ -333,6 +345,13 @@ export class FletesAdminComponent implements OnInit {
   protected readonly reasignando = signal(false);
   protected vehiculoSel = '';
 
+  constructor() {
+    // Refleja avances de estado e incidencias de los transportistas sin recargar.
+    sondear(15_000, () => {
+      if (!this.cargando() && !this.detalleDe() && !this.reasignarDe()) this.cargar(true);
+    });
+  }
+
   ngOnInit(): void {
     this.cargar();
     this.flota
@@ -367,8 +386,8 @@ export class FletesAdminComponent implements OnInit {
     this.detalleDe.set(null);
   }
 
-  private cargar(): void {
-    this.cargando.set(true);
+  private cargar(silencioso = false): void {
+    if (!silencioso) this.cargando.set(true);
     const f = this.filtro();
     this.service.listar(f === 'TODOS' ? undefined : f).subscribe({
       next: (list) => {

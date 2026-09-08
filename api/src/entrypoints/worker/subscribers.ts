@@ -99,14 +99,17 @@ const notificar: Subscriber = {
         const p = ev.payload as EventPayloadMap['IncidenciaEnRuta'];
         const to = await correoDe(ctx, p.productorId);
         if (!to) return;
+        const leve = p.gravedad === 'leve';
         await ctx.notifier.enviarEmail({
           to,
-          subject: 'Incidencia con tu flete — AgroFlete',
+          subject: leve ? 'Demora en tu flete — AgroFlete' : 'Incidencia con tu flete — AgroFlete',
           text:
             `El transporte de tu carga tuvo una incidencia en ruta:\n` +
             `"${p.motivo}"\n\n` +
-            `Tu solicitud volvió a la cola y se está reasignando a otro vehículo. ` +
-            `Te avisaremos en cuanto haya un transportista nuevo.`,
+            (leve
+              ? `El transportista lo resolvió y continúa el viaje; la carga puede llegar con retraso.`
+              : `Tu solicitud volvió a la cola y se está reasignando a otro vehículo. ` +
+                `Te avisaremos en cuanto haya un transportista nuevo.`),
         });
         return;
       }

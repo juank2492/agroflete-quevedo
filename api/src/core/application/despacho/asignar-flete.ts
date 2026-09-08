@@ -49,7 +49,10 @@ export async function asignarFlete(
   const ts = ctx.clock.nowIso();
   const origen = solicitud.origen;
   const destino = { lat: solicitud.acopioLat, lon: solicitud.acopioLon };
-  const transportista = await ctx.repos.usuarios.porId(vehiculo.transportistaId);
+  const [transportista, productor] = await Promise.all([
+    ctx.repos.usuarios.porId(vehiculo.transportistaId),
+    ctx.repos.usuarios.porId(solicitud.productorId),
+  ]);
 
   // La ruta es opcional: un fallo del proveedor no bloquea la asignación.
   let vial: Partial<
@@ -85,6 +88,7 @@ export async function asignarFlete(
     pesoTon: solicitud.pesoTon,
     acopioNombre: solicitud.acopioNombre,
     ...(transportista ? { transportistaNombre: transportista.nombreCompleto } : {}),
+    ...(productor ? { productorNombre: productor.nombreCompleto } : {}),
     vehiculoPlaca: vehiculo.placa,
     tarifa: solicitud.tarifaEstimada,
     estado: 'ASIGNADO',

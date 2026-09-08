@@ -20,8 +20,14 @@ export const cambiarEstadoFleteRequestSchema = z.object({
 });
 export type CambiarEstadoFleteRequest = z.infer<typeof cambiarEstadoFleteRequestSchema>;
 
+/** `leve`: el vehículo sigue el viaje. `grave`: la carga vuelve a la cola. */
+export const gravedadIncidenciaSchema = z.enum(['leve', 'grave']);
+export type GravedadIncidencia = z.infer<typeof gravedadIncidenciaSchema>;
+
 export const registrarIncidenciaRequestSchema = z.object({
   motivo: z.string().trim().min(3, 'Describe brevemente la incidencia').max(300),
+  gravedad: gravedadIncidenciaSchema,
+  /** Solo aplica a incidencias graves. */
   vehiculoFueraDeServicio: z.boolean(),
 });
 export type RegistrarIncidenciaRequest = z.infer<typeof registrarIncidenciaRequestSchema>;
@@ -30,6 +36,8 @@ export const incidenciaFleteSchema = z.object({
   motivo: z.string(),
   ts: isoDateSchema,
   vehiculoFueraDeServicio: z.boolean(),
+  /** Ausente en incidencias antiguas (se asumen graves). */
+  gravedad: gravedadIncidenciaSchema.optional(),
 });
 export type IncidenciaFlete = z.infer<typeof incidenciaFleteSchema>;
 
@@ -77,6 +85,7 @@ export const fleteSchema = z.object({
   pesoTon: z.number().optional(),
   acopioNombre: z.string().optional(),
   transportistaNombre: z.string().optional(),
+  productorNombre: z.string().optional(),
   vehiculoPlaca: z.string().optional(),
   tarifa: z.number(),
   estado: estadoFleteSchema,

@@ -11,6 +11,8 @@ const PATHS: Record<string, string> = {
   shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10ZM9 12l2 2 4-4',
   bolt: 'M13 2 4 14h7l-1 8 9-12h-7l1-8Z',
   chart: 'M3 3v18h18M8 16v-5m5 5V8m5 8v-3',
+  calendar:
+    'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z',
   dollar:
     'M12 2a10 10 0 1 0 0 20 10 10 0 1 0 0-20ZM16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8M12 18V6',
   receipt:

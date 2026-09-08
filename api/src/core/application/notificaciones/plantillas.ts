@@ -142,12 +142,15 @@ export function notificacionesDe(ev: DomainEvent): AvisoPlantilla[] {
 
     case 'IncidenciaEnRuta': {
       const p = ev.payload as EventPayloadMap['IncidenciaEnRuta'];
+      const leve = p.gravedad === 'leve';
       return [
         {
           para: 'productor',
           categoria: 'incidencia',
-          titulo: 'Incidencia con tu flete',
-          cuerpo: `"${p.motivo}". Tu carga volvió a la cola y se reasignará.`,
+          titulo: leve ? 'Demora en tu flete' : 'Incidencia con tu flete',
+          cuerpo: leve
+            ? `"${p.motivo}". El transportista resolvió y sigue en ruta; puede llegar con retraso.`
+            : `"${p.motivo}". Tu carga volvió a la cola y se reasignará.`,
           enlace: enlaceProductor(p.solicitudId),
         },
       ];

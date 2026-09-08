@@ -9,8 +9,9 @@ import { ForbiddenError, NotFoundError } from '../../domain/errors.js';
 
 /** Completa datos denormalizados ausentes y evita repetir lecturas por id. */
 async function enriquecerFletes(ctx: AppContext, fletes: Flete[]): Promise<Flete[]> {
-  const faltaAlgo = fletes.some((f) => !f.transportistaNombre || !f.vehiculoPlaca);
-  if (!faltaAlgo) return fletes;
+  const completo = (f: Flete): boolean =>
+    Boolean(f.transportistaNombre && f.productorNombre && f.vehiculoPlaca);
+  if (fletes.every(completo)) return fletes;
 
   const usuarios = new Map<string, Awaited<ReturnType<typeof ctx.repos.usuarios.porId>>>();
   const vehiculos = new Map<string, Awaited<ReturnType<typeof ctx.repos.vehiculos.porId>>>();
@@ -26,14 +27,16 @@ async function enriquecerFletes(ctx: AppContext, fletes: Flete[]): Promise<Flete
 
   return Promise.all(
     fletes.map(async (f) => {
-      if (f.transportistaNombre && f.vehiculoPlaca) return f;
-      const [transportistaNombre, vehiculoPlaca] = await Promise.all([
+      if (completo(f)) return f;
+      const [transportistaNombre, productorNombre, vehiculoPlaca] = await Promise.all([
         f.transportistaNombre ?? nombreDe(f.transportistaId),
+        f.productorNombre ?? nombreDe(f.productorId),
         f.vehiculoPlaca ?? placaDe(f.vehiculoId),
       ]);
       return {
         ...f,
         ...(transportistaNombre ? { transportistaNombre } : {}),
+        ...(productorNombre ? { productorNombre } : {}),
         ...(vehiculoPlaca ? { vehiculoPlaca } : {}),
       };
     }),

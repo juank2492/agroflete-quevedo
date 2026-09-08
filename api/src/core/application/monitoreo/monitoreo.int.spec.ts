@@ -172,6 +172,7 @@ describe('monitoreo (integración con DynamoDB Local)', () => {
 
     const actualizado = await registrarIncidencia(h.ctx, user, flete.id, {
       motivo: 'Se rompió el eje trasero en la vía',
+      gravedad: 'grave',
       vehiculoFueraDeServicio: true,
     });
     expect(actualizado.estado).toBe('INCIDENCIA');
@@ -197,6 +198,7 @@ describe('monitoreo (integración con DynamoDB Local)', () => {
     await expect(
       registrarIncidencia(h.ctx, user, flete.id, {
         motivo: 'nada',
+        gravedad: 'grave',
         vehiculoFueraDeServicio: false,
       }),
     ).rejects.toBeInstanceOf(ConflictError);
@@ -204,9 +206,38 @@ describe('monitoreo (integración con DynamoDB Local)', () => {
     await cambiarEstadoFlete(h.ctx, user, flete.id, 'EN_CAMINO_ORIGEN');
     await registrarIncidencia(h.ctx, user, flete.id, {
       motivo: 'Vía cerrada por protesta, no puedo continuar',
+      gravedad: 'grave',
       vehiculoFueraDeServicio: false,
     });
     expect((await h.ctx.repos.vehiculos.porId(v.id))?.estado).toBe('DISPONIBLE');
+  });
+
+  it('registrarIncidencia leve: el flete sigue su curso y solo avisa al productor', async () => {
+    if (!disponible) return;
+    const { s, v, flete } = await crearFleteListo(h, 'p-lev', 't-lev');
+    const user = transportista('t-lev');
+    await cambiarEstadoFlete(h.ctx, user, flete.id, 'EN_CAMINO_ORIGEN');
+
+    const actualizado = await registrarIncidencia(h.ctx, user, flete.id, {
+      motivo: 'Pinchazo de llanta ya resuelto, seguimos viaje',
+      gravedad: 'leve',
+      vehiculoFueraDeServicio: false,
+    });
+    expect(actualizado.estado).toBe('EN_CAMINO_ORIGEN');
+    expect(actualizado.incidencia?.gravedad).toBe('leve');
+
+    const solicitud = await h.ctx.repos.solicitudes.porId(s.id);
+    expect(solicitud?.estado).not.toBe('PENDIENTE');
+    expect(solicitud?.fleteId).toBe(flete.id);
+    expect(solicitud?.reasignacionPorIncidencia).not.toBe(true);
+    expect((await h.ctx.repos.vehiculos.porId(v.id))?.estado).toBe('OCUPADO');
+
+    const pend = await h.ctx.repos.outbox.pendientes(50);
+    const ev = pend.find(
+      (e) =>
+        e.tipo === 'IncidenciaEnRuta' && (e.payload as { fleteId: string }).fleteId === flete.id,
+    );
+    expect((ev?.payload as { gravedad?: string }).gravedad).toBe('leve');
   });
 
   it('registrarUbicacion: guarda el punto, actualiza ultimaUbicacion y arma la ruta', async () => {
@@ -337,6 +368,9 @@ describe('monitoreo (integración con DynamoDB Local)', () => {
     expect(m.tarifaMedia).toBeGreaterThan(0);
     expect(m.solicitudesPendientes).toBeGreaterThanOrEqual(0);
     expect(Object.values(m.fletesPorEstado).reduce((a, b) => a + b, 0)).toBeGreaterThan(0);
+    expect(Object.values(m.solicitudesPorEstado).reduce((a, b) => a + b, 0)).toBeGreaterThan(0);
+    expect(m.solicitudesPorDia).toHaveLength(14);
+    expect(m.solicitudesPorDia.every((p) => /^\d{4}-\d{2}-\d{2}$/.test(p.fecha))).toBe(true);
     expect(m.retrasosDetectados).toBeGreaterThanOrEqual(1);
   });
 });

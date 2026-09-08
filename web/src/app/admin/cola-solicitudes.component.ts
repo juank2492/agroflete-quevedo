@@ -8,6 +8,7 @@ import { UiFeedbackService } from '../core/ui-feedback.service';
 import { apiMessage } from '../core/http-error';
 import { PagoBadgeComponent } from '../shared/pago-badge.component';
 import { zonaLabel } from '../shared/zona';
+import { sondear } from '../core/sondeo';
 
 @Component({
   selector: 'app-cola-solicitudes',
@@ -162,12 +163,23 @@ export class ColaSolicitudesComponent implements OnInit {
   protected readonly vehiculoId = signal<string | null>(null);
   protected readonly asignando = signal(false);
 
+  constructor() {
+    // Nuevas solicitudes y pagos aprobados aparecen sin recargar la página.
+    sondear(15_000, () => {
+      if (!this.cargando() && !this.seleccion()) this.refrescar();
+    });
+  }
+
   ngOnInit(): void {
     this.recargar();
   }
 
   private recargar(): void {
     this.cargando.set(true);
+    this.refrescar();
+  }
+
+  private refrescar(): void {
     this.solicitudes.listar('PENDIENTE').subscribe({
       next: (list) => {
         this.pendientes.set(list);

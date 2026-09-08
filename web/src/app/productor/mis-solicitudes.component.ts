@@ -17,6 +17,7 @@ import { EstadoSolicitudComponent } from '../shared/estado-solicitud.component';
 import { FiltroChipsComponent, type OpcionFiltro } from '../shared/filtro-chips.component';
 import { PaginacionComponent, paginar } from '../shared/paginacion.component';
 import { estadoLabel } from '../shared/estado-labels';
+import { sondear } from '../core/sondeo';
 
 const POR_PAGINA = 8;
 
@@ -161,6 +162,10 @@ export class MisSolicitudesComponent implements OnInit {
     // Cuando la cola offline logra enviar algo, recargar la lista.
     effect(() => {
       this.colaSvc.enviadas();
+      if (!this.cargando()) this.recargar();
+    });
+    // Refleja asignaciones y cambios de estado hechos por el admin sin recargar.
+    sondear(15_000, () => {
       if (!this.cargando()) this.recargar();
     });
   }

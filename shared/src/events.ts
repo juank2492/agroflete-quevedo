@@ -54,6 +54,8 @@ export const eventPayloadSchemas = {
     productorId: z.string(),
     transportistaId: z.string(),
     motivo: z.string(),
+    /** `leve`: el flete continúa. `grave`: la carga vuelve a la cola. */
+    gravedad: z.enum(['leve', 'grave']).optional(),
   }),
   StockBajo: z.object({
     acopioId: z.string(),

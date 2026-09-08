@@ -1,12 +1,15 @@
 import {
+  CUSTOM_ELEMENTS_SCHEMA,
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   computed,
   effect,
   inject,
   input,
   output,
   signal,
+  viewChild,
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { AbstractControl, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -64,7 +67,19 @@ function enmascarar(v: string): string {
 @Component({
   selector: 'app-pago-solicitud',
   imports: [ReactiveFormsModule, DecimalPipe, IconComponent],
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: `
+    .cally-pop {
+      inset: auto;
+      margin: 0;
+      border: 0;
+      padding: 0;
+      max-width: calc(100vw - 16px);
+      background: transparent;
+      overflow: visible;
+    }
+  `,
   template: `
     @let p = pago();
     <div class="rounded-box bg-base-100 p-5 shadow-card">
@@ -148,6 +163,17 @@ function enmascarar(v: string): string {
             </div>
 
             <label class="form-control w-full">
+              <span class="label-text mb-1">Titular</span>
+              <input
+                formControlName="titular"
+                autocomplete="cc-name"
+                placeholder="Como aparece en la tarjeta"
+                class="input input-bordered w-full"
+                [class.input-error]="malo(formT.controls.titular)"
+              />
+            </label>
+
+            <label class="form-control w-full">
               <span class="label-text mb-1">Número de tarjeta</span>
               <div class="relative">
                 <input
@@ -169,16 +195,6 @@ function enmascarar(v: string): string {
               @if (malo(formT.controls.numeroTarjeta)) {
                 <span class="mt-1 text-xs text-error">Número inválido (13 a 19 dígitos)</span>
               }
-            </label>
-
-            <label class="form-control w-full">
-              <span class="label-text mb-1">Titular</span>
-              <input
-                formControlName="titular"
-                autocomplete="cc-name"
-                class="input input-bordered w-full"
-                [class.input-error]="malo(formT.controls.titular)"
-              />
             </label>
 
             <div class="grid grid-cols-2 gap-3">
@@ -259,15 +275,40 @@ function enmascarar(v: string): string {
                   [class.input-error]="malo(formD.controls.monto)"
                 />
               </label>
-              <label class="form-control">
-                <span class="label-text mb-1">Fecha</span>
-                <input
-                  type="date"
-                  formControlName="fecha"
-                  class="input input-bordered"
+              <div class="form-control">
+                <span class="label-text mb-1">Fecha del depósito</span>
+                <button
+                  #calBtn
+                  type="button"
+                  class="input input-bordered flex w-full items-center justify-between"
                   [class.input-error]="malo(formD.controls.fecha)"
-                />
-              </label>
+                  (click)="alternarCal()"
+                >
+                  <span [class.opacity-50]="!formD.controls.fecha.value">
+                    {{ formD.controls.fecha.value || 'Elegir fecha' }}
+                  </span>
+                  <app-icon name="calendar" [size]="16" class="opacity-60" />
+                </button>
+              </div>
+            </div>
+
+            <div #calPop popover class="cally-pop">
+              <div class="rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
+                <calendar-date
+                  class="cally"
+                  [attr.value]="formD.controls.fecha.value || null"
+                  [attr.max]="hoy"
+                  (change)="onFecha($event)"
+                >
+                  <svg aria-label="Mes anterior" class="size-4" slot="previous" viewBox="0 0 24 24">
+                    <path fill="none" stroke="currentColor" stroke-width="2" d="M15 6l-6 6 6 6" />
+                  </svg>
+                  <svg aria-label="Mes siguiente" class="size-4" slot="next" viewBox="0 0 24 24">
+                    <path fill="none" stroke="currentColor" stroke-width="2" d="M9 6l6 6-6 6" />
+                  </svg>
+                  <calendar-month></calendar-month>
+                </calendar-date>
+              </div>
             </div>
             <p class="text-xs text-base-content/50">
               Un administrador verificará el comprobante antes de asignar el flete.
@@ -299,7 +340,11 @@ export class PagoSolicitudComponent {
   readonly procesado = output<void>();
 
   protected readonly bancos = BANCOS_EC;
+  protected readonly hoy = new Date().toISOString().slice(0, 10);
   protected readonly abierto = signal(false);
+
+  private readonly calBtn = viewChild<ElementRef<HTMLButtonElement>>('calBtn');
+  private readonly calPop = viewChild<ElementRef<HTMLElement>>('calPop');
   protected readonly metodo = signal<'tarjeta' | 'deposito'>('tarjeta');
   protected readonly enviando = signal(false);
   protected readonly numeroVista = signal('');
@@ -362,13 +407,47 @@ export class PagoSolicitudComponent {
     this.formT.controls.expiracion.markAsDirty();
   }
 
+  protected onFecha(ev: Event): void {
+    const valor = (ev.target as HTMLElement & { value?: string }).value ?? '';
+    this.formD.controls.fecha.setValue(valor);
+    this.formD.controls.fecha.markAsDirty();
+    this.formD.controls.fecha.markAsTouched();
+    this.cerrarCal();
+  }
+
+  protected alternarCal(): void {
+    const pop = this.calPop()?.nativeElement as PopoverEl | undefined;
+    const btn = this.calBtn()?.nativeElement;
+    if (!pop || !btn) return;
+    if (pop.matches(':popover-open')) {
+      pop.hidePopover();
+      return;
+    }
+    pop.showPopover();
+    const r = btn.getBoundingClientRect();
+    pop.style.left = `${r.left}px`;
+    pop.style.minWidth = `${r.width}px`;
+    const espacioAbajo = window.innerHeight - r.bottom;
+    pop.style.top =
+      espacioAbajo < pop.offsetHeight + 16
+        ? `${Math.max(8, r.top - pop.offsetHeight - 6)}px`
+        : `${r.bottom + 6}px`;
+  }
+
+  private cerrarCal(): void {
+    const pop = this.calPop()?.nativeElement as PopoverEl | undefined;
+    if (pop?.matches(':popover-open')) pop.hidePopover();
+  }
+
   protected abrir(): void {
     this.metodo.set('tarjeta');
+    this.cerrarCal();
     this.abierto.set(true);
   }
 
   protected cerrar(): void {
     this.abierto.set(false);
+    this.cerrarCal();
   }
 
   protected pagarTarjeta(): void {
@@ -409,6 +488,8 @@ export class PagoSolicitudComponent {
     });
   }
 }
+
+type PopoverEl = HTMLElement & { showPopover(): void; hidePopover(): void };
 
 function noVencida(c: AbstractControl): { vencida: true } | null {
   const v = c.value as string;
