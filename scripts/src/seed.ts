@@ -355,13 +355,58 @@ const STOCKS = [
   },
 ];
 
-function tarifaDe(s: SeedSolicitud): { distanciaKm: number; tarifa: number } {
+/** Avisos in-app de demo para que la campanita no esté vacía. */
+const NOTIFICACIONES: {
+  userId: string;
+  categoria: 'solicitud' | 'flete' | 'pago' | 'incidencia' | 'sistema';
+  titulo: string;
+  cuerpo: string;
+  enlace?: string;
+  horasAtras: number;
+  leida?: boolean;
+}[] = [
+  {
+    userId: 'seed-productor',
+    categoria: 'flete',
+    titulo: 'Transportista asignado',
+    cuerpo: 'Ya hay un transportista asignado a tu carga de maíz.',
+    enlace: '/p/solicitudes/sol-4',
+    horasAtras: 5,
+  },
+  {
+    userId: 'seed-productor',
+    categoria: 'pago',
+    titulo: 'Pago confirmado',
+    cuerpo: 'Recibimos tu pago. Tu carga entró en la cola de asignación.',
+    enlace: '/p/solicitudes/sol-4',
+    horasAtras: 6,
+    leida: true,
+  },
+  {
+    userId: 'seed-transportista',
+    categoria: 'flete',
+    titulo: 'Nuevo flete asignado',
+    cuerpo: 'Revisa los detalles y actualiza el estado del viaje.',
+    enlace: '/t/fletes',
+    horasAtras: 5,
+  },
+];
+
+const CATEGORIAS_ORD = [...R.categorias].sort((a, b) => a.capacidadMaxTon - b.capacidadMaxTon);
+
+function categoriaDe(pesoTon: number) {
+  return CATEGORIAS_ORD.find((c) => pesoTon <= c.capacidadMaxTon) ?? CATEGORIAS_ORD.at(-1)!;
+}
+
+function tarifaDe(s: SeedSolicitud): { distanciaKm: number; tarifa: number; categoria: string } {
   const acopio = acopioPorId[s.acopioId]!;
   const distanciaKm = round2(
     haversineKm(s.origen, { lat: acopio.lat, lon: acopio.lon }) * R.factorSinuosidad,
   );
   const factor = cultivoDe(s.cultivo)?.factor ?? 1;
-  return { distanciaKm, tarifa: round2(R.tarifaBaseKm * distanciaKm * factor) };
+  const cat = categoriaDe(s.pesoTon);
+  const costoKm = R.tarifaBaseKm + cat.costoPorTonKm * s.pesoTon;
+  return { distanciaKm, tarifa: round2(costoKm * distanciaKm * factor), categoria: cat.tipo };
 }
 
 async function main(): Promise<void> {
@@ -397,7 +442,7 @@ async function main(): Promise<void> {
     })),
 
     ...SOLICITUDES.map((s) => {
-      const { distanciaKm, tarifa } = tarifaDe(s);
+      const { distanciaKm, tarifa, categoria } = tarifaDe(s);
       const createdAt = hAtras(s.horasAtras);
       const acopio = acopioPorId[s.acopioId]!;
       return {
@@ -417,11 +462,23 @@ async function main(): Promise<void> {
         cultivo: s.cultivo,
         cultivoNombre: cultivoDe(s.cultivo)?.nombre ?? s.cultivo,
         pesoTon: s.pesoTon,
+        categoriaCarga: categoria,
         zona: acopio.zona,
         distanciaKm,
         tarifaEstimada: tarifa,
         estado: s.estado,
         createdAt,
+        // sol-1 queda sin pagar para demostrar el flujo de pago; el resto, pagado.
+        pago:
+          s.id === 'sol-1'
+            ? { estado: 'PENDIENTE', monto: tarifa, actualizadoEn: createdAt }
+            : {
+                estado: 'PAGADO',
+                metodo: 'PASARELA',
+                monto: tarifa,
+                referencia: `SEED-${s.id}`,
+                actualizadoEn: createdAt,
+              },
         ...(s.fleteId ? { fleteId: s.fleteId } : {}),
         ...(s.retrasoNotificado ? { retrasoNotificado: true } : {}),
       };
@@ -479,6 +536,23 @@ async function main(): Promise<void> {
       umbralMinimo: st.umbralMinimo,
       umbralMaximo: st.umbralMaximo,
     })),
+
+    ...NOTIFICACIONES.map((n, i) => {
+      const ms = Date.now() - n.horasAtras * 3_600_000;
+      const id = `${String(ms).padStart(16, '0')}-${i}`;
+      return {
+        PK: `NOTIF#${n.userId}`,
+        SK: `NOTIF#${id}`,
+        id,
+        userId: n.userId,
+        categoria: n.categoria,
+        titulo: n.titulo,
+        cuerpo: n.cuerpo,
+        ...(n.enlace ? { enlace: n.enlace } : {}),
+        createdAt: new Date(ms).toISOString(),
+        ...(n.leida ? { leidoEn: new Date(ms + 60_000).toISOString() } : {}),
+      };
+    }),
   ];
 
   for (let i = 0; i < items.length; i += 25) {

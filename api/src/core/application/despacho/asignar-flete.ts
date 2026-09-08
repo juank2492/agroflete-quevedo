@@ -1,4 +1,9 @@
-import type { AsignarFleteRequest, Flete, Vehiculo } from '@agroflete/shared';
+import {
+  pagoConfirmado,
+  type AsignarFleteRequest,
+  type Flete,
+  type Vehiculo,
+} from '@agroflete/shared';
 import type { AppContext } from '../../app-context.js';
 import { ConflictError, NotFoundError } from '../../domain/errors.js';
 
@@ -24,6 +29,9 @@ export async function asignarFlete(
   if (!solicitud) throw new NotFoundError('Solicitud no encontrada');
   if (solicitud.estado !== 'PENDIENTE') {
     throw new ConflictError('La solicitud ya no está pendiente');
+  }
+  if (ctx.config.pagoObligatorio && !pagoConfirmado(solicitud)) {
+    throw new ConflictError('La solicitud aún no tiene el pago confirmado');
   }
 
   const vehiculo = await ctx.repos.vehiculos.porId(input.vehiculoId);
@@ -62,6 +70,8 @@ export async function asignarFlete(
     );
   }
 
+  // La tarifa del flete es SIEMPRE la que el productor ya pagó (`tarifaEstimada`).
+  // La ruta vial solo sirve para el mapa: nunca cambia lo cobrado.
   const flete: Flete = {
     id: ctx.ids.uuid(),
     solicitudId: solicitud.id,

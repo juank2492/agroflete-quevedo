@@ -5,17 +5,19 @@
 La lógica de negocio (`api/src/core`) no conoce ni Express ni AWS. Solo depende de **puertos**
 (interfaces en `core/ports`). Los **adaptadores** y **entrypoints** son intercambiables:
 
-| Puerto             | Adaptador local                  | Adaptador AWS (Fase A)          |
-| ------------------ | -------------------------------- | ------------------------------- |
-| Repositorios       | DynamoDB Local (Docker, offline) | DynamoDB on-demand              |
-| `TokenService`     | JWT HS256 propio                 | Cognito (JWKS)                  |
-| `PasswordHasher`   | bcryptjs                         | (n/a con Cognito)               |
-| `EventBus`         | outbox en tabla + worker         | EventBridge + SQS               |
-| `Notifier`         | SMTP → Mailpit                   | SES                             |
-| `RoutingPort`      | OSRM (servidor demo público)     | OSRM propio / Mapbox / Valhalla |
-| `GeocodingPort`    | Photon + respaldo Nominatim      | proveedor con clave (MapTiler…) |
-| Entrypoint HTTP    | Express (`http-express`)         | API Gateway + Lambda (`lambda`) |
-| Tareas programadas | `node-cron` en el worker         | EventBridge Scheduler           |
+| Puerto             | Adaptador local                  | Adaptador AWS (Fase A)           |
+| ------------------ | -------------------------------- | -------------------------------- |
+| Repositorios       | DynamoDB Local (Docker, offline) | DynamoDB on-demand               |
+| `TokenService`     | JWT HS256 propio                 | Cognito (JWKS)                   |
+| `PasswordHasher`   | bcryptjs                         | (n/a con Cognito)                |
+| `EventBus`         | outbox en tabla + worker         | EventBridge + SQS                |
+| `Notifier`         | SMTP → Mailpit                   | SES                              |
+| `PushSender`       | `web-push` + claves VAPID        | igual (`web-push` desde Lambda)  |
+| `RoutingPort`      | OSRM (servidor demo público)     | OSRM propio / Mapbox / Valhalla  |
+| `GeocodingPort`    | Photon + respaldo Nominatim      | proveedor con clave (MapTiler…)  |
+| Entrypoint HTTP    | Express (`http-express`)         | API Gateway + Lambda (`lambda`)  |
+| Tareas programadas | `node-cron` en el worker         | EventBridge Scheduler            |
+| Cola offline web   | IndexedDB + reenvío en `online`  | + Service Worker Background Sync |
 
 ## Componentes locales
 
@@ -112,3 +114,31 @@ terminal se puede `CANCELADO`. Desde EN_CAMINO_ORIGEN / CARGANDO / EN_RUTA se pu
 (terminal para ese flete; la solicitud vuelve a PENDIENTE y a la cola del admin). Fuente única:
 `shared/src/domain.ts` (`TRANSICIONES_FLETE`), compartida por backend (validación) y frontend
 (botones).
+
+## Fase A — checklist de migración a AWS
+
+Se hace en una fase separada, **cuando el sistema local esté 100 % verde**. No se toca `core/`:
+solo se añaden adaptadores/entrypoints y se despliega `infra/template.yaml`. Cada fila es algo
+que hoy está resuelto de forma **provisional para local** y hay que cambiar.
+
+| Provisional (local)                                                | Definitivo (AWS)                                                                                                                                    |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| JWT propio HS256 (`JWT_SECRET`), sin refresh                       | **Cognito** User Pool + grupos; verificación por JWKS; trigger post-confirmación crea `USUARIO#/PERFIL`                                             |
+| Outbox en la tabla + worker con `setInterval` (polling)            | `EventBus` publica a **EventBridge**; consumidores = **Lambdas** con **SQS** + **DLQ** (la tabla `OUTBOX#` queda como respaldo/idempotencia)        |
+| `node-cron` en el worker (`DetectarRetrasos`, `CRON_DEMO`)         | **EventBridge Scheduler** → Lambda `DetectarRetrasos`                                                                                               |
+| Express (`entrypoints/http-express`)                               | **API Gateway HTTP API** + `entrypoints/lambda` (mismo `Router`, mapper `APIGatewayProxyEventV2 → HttpRequest`), un handler "lambdalith" por módulo |
+| Correo por SMTP/Mailpit (`nodemailer`)                             | **SES** (mismo `Notifier`)                                                                                                                          |
+| Tabla creada por `scripts/db:migrate`                              | **CloudFormation / SAM** (`infra/template.yaml`; PAY_PER_REQUEST + PITR)                                                                            |
+| Frontend por `ng serve`                                            | Build estático en **S3 + CloudFront** (OAC); `aws s3 sync` + invalidación                                                                           |
+| CORS fijo a `http://localhost:4200`                                | Origen del dominio real, por parámetro SAM                                                                                                          |
+| Config por `.env.local` / `env.ts`                                 | Parámetros SAM + **SSM Parameter Store / Secrets Manager** (JWT/VAPID/SMTP)                                                                         |
+| DynamoDB Local: endpoint + credenciales dummy                      | Rol IAM de la Lambda; sin endpoint override                                                                                                         |
+| OSRM demo, Photon/Nominatim públicos (sin SLA)                     | Auto-hospedar o proveedor con clave (documentado como limitación; para la defensa se mantienen)                                                     |
+| **Pago simulado** (pasarela por paridad de dígito; sin cobro real) | Integración real (Stripe/PayPhone/Kushki) detrás de la misma forma de `pago`                                                                        |
+| `PushSender` con `web-push` desde el worker Node                   | `web-push` desde una Lambda (mismo puerto); claves VAPID en Secrets                                                                                 |
+| Cola offline: reenvío solo con la pestaña abierta                  | + **Background Sync** del Service Worker (la idempotencia ya está lista)                                                                            |
+| CI: lint + tests + `sam validate` (sin deploy)                     | Workflows `deploy-api` (`sam deploy`) y `deploy-web` con rol **OIDC**                                                                               |
+
+Post-deploy: re-ejecutar la carga (k6) contra API Gateway, capturar el **cold start real** del
+CloudWatch Dashboard y completar `docs/reporte-metricas.md` y `docs/costos.md`. Runbook paso a
+paso en `docs/despliegue-aws.md` (se escribe en esa fase).

@@ -6,6 +6,8 @@ import type {
   EstadoUsuario,
   EstadoVehiculo,
   Flete,
+  Notificacion,
+  PushSubscriptionDTO,
   ReglasTarifa,
   Rol,
   Solicitud,
@@ -51,6 +53,7 @@ export interface OutboxRecord {
 
 export interface OutboxRepository {
   agregar(rec: Pick<OutboxRecord, 'id' | 'tipo' | 'payload' | 'createdAt'>): Promise<void>;
+  porId(id: string): Promise<OutboxRecord | null>;
   pendientes(limite: number): Promise<OutboxRecord[]>;
   marcarSuscriptor(id: string, suscriptor: string): Promise<void>;
   marcarProcesado(id: string): Promise<void>;
@@ -105,12 +108,17 @@ export interface SolicitudRepository {
         | 'retrasoNotificado'
         | 'reasignacionPorIncidencia'
         | 'motivoIncidencia'
+        | 'pago'
       >
     >,
     opts?: { estadoActual?: EstadoSolicitud },
   ): Promise<void>;
   /** Solicitudes PENDIENTE creadas antes de `fechaIso` (para detectar retrasos). */
   pendientesAntesDe(fechaIso: string): Promise<Solicitud[]>;
+  /** Solicitud creada con esa clave de idempotencia por ese productor, si existe. */
+  porIdempotencyKey(productorId: string, key: string): Promise<Solicitud | null>;
+  /** Registra el puntero clave→solicitud para deduplicar reintentos. */
+  registrarIdempotencia(productorId: string, key: string, solicitudId: string): Promise<void>;
 }
 
 export interface VehiculoRepository {
@@ -147,8 +155,27 @@ export interface FleteRepository {
   ruta(fleteId: string): Promise<UbicacionFlete[]>;
 }
 
+/** Aviso in-app para un usuario (la campanita). */
+export interface NotificacionRepository {
+  crear(n: Notificacion): Promise<void>;
+  /** Últimas `limite` notificaciones del usuario, más recientes primero. */
+  listar(userId: string, limite: number): Promise<Notificacion[]>;
+  marcarLeida(userId: string, id: string, leidoEnIso: string): Promise<void>;
+  /** Marca como leídas todas las no leídas; devuelve cuántas. */
+  marcarTodasLeidas(userId: string, leidoEnIso: string): Promise<number>;
+}
+
+/** Suscripciones Web Push del navegador de cada usuario. */
+export interface PushSubscriptionRepository {
+  guardar(userId: string, sub: PushSubscriptionDTO): Promise<void>;
+  porUsuario(userId: string): Promise<PushSubscriptionDTO[]>;
+  eliminar(userId: string, endpoint: string): Promise<void>;
+}
+
 export interface Repositories {
   usuarios: UsuarioRepository;
+  notificaciones: NotificacionRepository;
+  push: PushSubscriptionRepository;
   outbox: OutboxRepository;
   acopios: AcopioRepository;
   inventario: InventarioRepository;

@@ -54,9 +54,25 @@ Usuarios de demo (contraseña **Agroflete2026**):
 - Alternativa sin GPS: pestaña **Escribir dirección** → teclear "Parque La Familia" (o una calle)
   → elegir de la lista (con tipo y distancia a Quevedo). El nombre queda guardado en la solicitud.
 - Toque 1: elegir **cultivo** (Maíz / Banano). Toque 2: ajustar **toneladas**.
-- La **tarjeta de tarifa** se recalcula en vivo (distancia por carretera + precio).
-- Toque 3: **Confirmar flete** → la solicitud queda PENDIENTE.
-- Mailpit: llega "Solicitud recibida".
+- La **tarjeta de tarifa** se recalcula en vivo. El peso elige la **categoría de vehículo**
+  (furgón / camión / plataforma / tráiler) y su costo por t·km entra en el precio; si el peso
+  supera la categoría más grande, se rechaza. El admin edita capacidades y costos en `/a/tarifas`.
+- Toque 3: **Confirmar flete** → la solicitud queda PENDIENTE (con **pago pendiente**).
+- **Sin conexión:** en DevTools → Network → _Offline_, pulsar **Confirmar**. La solicitud se
+  guarda en IndexedDB y aparece "sin enviar" en `/p/solicitudes`. Volver a _Online_ (o
+  "Reintentar"): se envía sola. Repetir el envío con la misma clave no crea duplicados
+  (idempotencia en el servidor).
+
+## 3b. Pago de la tarifa (simulado) (45 s)
+
+- En el detalle de la solicitud aparece el panel **Pago de la tarifa**. Hasta pagar, la solicitud
+  no se asigna a nadie (en `/a/solicitudes` sale "Sin pago").
+- **Tarjeta:** número terminado en dígito **par** → pago confirmado al instante (correo "Pago
+  confirmado"); terminado en **impar** → rechazado, se puede reintentar. No hay cobro real.
+- **Depósito:** rellenar banco/comprobante/monto/fecha → queda **EN_REVISION**. Como
+  **admin@agroflete.ec** → `/a/pagos` → **Aprobar** (o Rechazar con nota). Al aprobar, la
+  solicitud entra en la cola.
+- El seed trae `sol-1` sin pagar para mostrar el bloqueo; el resto ya están pagadas.
 
 ## 4. Alta de transportista y vehículo (admin) (45 s)
 
@@ -72,11 +88,14 @@ Usuarios de demo (contraseña **Agroflete2026**):
 ## 5. Asignación (administrador) (45 s)
 
 - Iniciar como **admin@agroflete.ec** → `/a/solicitudes`.
-- En la solicitud recién creada, **Asignar** → el diálogo lista los vehículos compatibles
-  (zona + capacidad). Elegir uno → **Confirmar asignación**.
+- En la solicitud recién creada (ya **pagada**), **Asignar** → el diálogo lista los vehículos
+  compatibles (zona + capacidad). Elegir uno → **Confirmar asignación**. El flete conserva
+  **exactamente la tarifa pagada**; la ruta real de OSRM solo se usa para dibujar el mapa.
 - Efectos: la solicitud sale de la cola (pasa a ASIGNADA), el vehículo queda OCUPADO.
-- Mailpit: "Se asignó un transportista a tu carga" (productor) y "Nuevo flete asignado"
-  (transportista).
+- El productor y el transportista lo ven en la **campanita** (arriba a la derecha): el correo se
+  reservó para lo esencial (credenciales, pago rechazado, retraso, incidencia, cancelación,
+  stock); la asignación y el avance de estado van solo por notificación in-app. Con el build de
+  producción y claves VAPID (`VAPID_*`), además llega como **notificación push** al celular.
 - En `/a/fletes` se ve el flete con **transportista y placa**; la lista se filtra por estado y se
   pagina. Al pulsar el **estado** se abre un detalle con el contacto del transportista, el vehículo,
   el historial y (si aplica) el motivo de cancelación/incidencia. Botón **"Reasignar"** (mientras

@@ -21,6 +21,8 @@ import { makeAjustesRepository } from '../adapters/persistence/dynamo/ajustes.re
 import { makeReglasTarifaRepository } from '../adapters/persistence/dynamo/reglas-tarifa.repository.js';
 import { makeSolicitudRepository } from '../adapters/persistence/dynamo/solicitud.repository.js';
 import { makeUsuarioRepository } from '../adapters/persistence/dynamo/usuario.repository.js';
+import { makeNotificacionRepository } from '../adapters/persistence/dynamo/notificacion.repository.js';
+import { makePushSubscriptionRepository } from '../adapters/persistence/dynamo/push.repository.js';
 import { makeVehiculoRepository } from '../adapters/persistence/dynamo/vehiculo.repository.js';
 import { idGenerator, systemClock } from '../adapters/system/clock.js';
 import { logger } from '../adapters/system/pino-logger.js';
@@ -115,7 +117,12 @@ export function relojFijo(iso: string): Clock {
   return { now: () => fija, nowIso: () => fija.toISOString() };
 }
 
-export function contextoDePrueba(tabla: string, clock: Clock = systemClock): CtxDePrueba {
+export function contextoDePrueba(
+  tabla: string,
+  clock: Clock = systemClock,
+  configOverrides: Partial<AppContext['config']> = {},
+  deps: Partial<Pick<AppContext, 'routing' | 'geocoding'>> = {},
+): CtxDePrueba {
   const doc = DynamoDBDocumentClient.from(raw, {
     marshallOptions: { removeUndefinedValues: true },
   });
@@ -136,15 +143,27 @@ export function contextoDePrueba(tabla: string, clock: Clock = systemClock): Ctx
       retrasoUmbralHoras: 6,
       adminEmail: 'admin@agroflete.ec',
       geocercaAcopioM: 300,
+      // Por defecto las pruebas no exigen pago; el spec de pagos lo activa aparte.
+      pagoObligatorio: false,
+      ...configOverrides,
     },
     tokens: makeLocalTokenService('secreto-it-1234567890', '1h'),
     hasher: bcryptHasher,
     events: makeOutboxEventBus({ outbox, ids: idGenerator, clock }),
     notifier,
-    geocoding: geocodingDePrueba,
-    routing: routingDePrueba,
+    push: {
+      habilitado: false,
+      clavePublica: () => null,
+      async enviar() {
+        return 'error';
+      },
+    },
+    geocoding: deps.geocoding ?? geocodingDePrueba,
+    routing: deps.routing ?? routingDePrueba,
     repos: {
       usuarios: makeUsuarioRepository(doc, tabla),
+      notificaciones: makeNotificacionRepository(doc, tabla),
+      push: makePushSubscriptionRepository(doc, tabla),
       outbox,
       acopios: makeAcopioRepository(doc, tabla),
       inventario: makeInventarioRepository(doc, tabla),

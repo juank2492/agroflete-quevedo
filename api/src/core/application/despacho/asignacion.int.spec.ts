@@ -121,6 +121,45 @@ describe('asignación de fletes (integración con DynamoDB Local)', () => {
     expect(pend.some((e) => e.tipo === 'FleteAsignado')).toBe(true);
   });
 
+  it('asignarFlete: la tarifa del flete es la que pagó el productor, aunque la ruta real difiera', async () => {
+    if (!disponible) return;
+    const DIST_VIAL = 90; // muy distinta de la estimación por Haversine
+    const conRuta = contextoDePrueba(
+      TABLA,
+      undefined,
+      {},
+      {
+        routing: {
+          async calcularRuta(origen, destino) {
+            return {
+              geometria: [origen, destino],
+              distanciaKm: DIST_VIAL,
+              duracionMin: 120,
+              aproximada: false,
+            };
+          },
+        },
+      },
+    );
+    await conRuta.ctx.repos.acopios.guardar(ACOPIO);
+
+    const s = await crearSolicitud(conRuta.ctx, 'p-vial', solicitudInput);
+    const v = await registrarVehiculo(conRuta.ctx, 't-vial', {
+      placa: 'VIA-7777',
+      tipo: 'camion',
+      capacidadTon: 18,
+      zona: 'mocache',
+    });
+    const flete = await asignarFlete(conRuta.ctx, 'admin-1', {
+      solicitudId: s.id,
+      vehiculoId: v.id,
+    });
+
+    // La ruta real se guarda (para el mapa) pero NO altera lo cobrado.
+    expect(flete.distanciaVialKm).toBe(DIST_VIAL);
+    expect(flete.tarifa).toBe(s.tarifaEstimada);
+  });
+
   it('asignarFlete sobre una solicitud ya asignada lanza ConflictError', async () => {
     if (!disponible) return;
     const s = await crearSolicitud(h.ctx, 'p-6', solicitudInput);

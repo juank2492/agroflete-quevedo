@@ -1,16 +1,17 @@
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { DatePipe, DecimalPipe, TitleCasePipe } from '@angular/common';
-import type { Solicitud, Vehiculo } from '@agroflete/shared';
+import { pagoDe, type Solicitud, type Vehiculo } from '@agroflete/shared';
 import { FleteService } from '../core/flete.service';
 import { SolicitudService } from '../core/solicitud.service';
 import { VehiculoService } from '../core/vehiculo.service';
 import { UiFeedbackService } from '../core/ui-feedback.service';
 import { apiMessage } from '../core/http-error';
+import { PagoBadgeComponent } from '../shared/pago-badge.component';
 import { zonaLabel } from '../shared/zona';
 
 @Component({
   selector: 'app-cola-solicitudes',
-  imports: [DatePipe, DecimalPipe, TitleCasePipe],
+  imports: [DatePipe, DecimalPipe, TitleCasePipe, PagoBadgeComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="mx-auto max-w-4xl">
@@ -42,6 +43,11 @@ import { zonaLabel } from '../shared/zona';
                 <tr>
                   <td>
                     {{ s.cultivoNombre }} · {{ s.pesoTon }} t
+                    @if (pagoDe(s).estado !== 'PAGADO') {
+                      <span class="mt-1 block">
+                        <app-pago-badge [estado]="pagoDe(s).estado" />
+                      </span>
+                    }
                     @if (s.reasignacionPorIncidencia) {
                       <span
                         class="mt-1 block text-xs text-error"
@@ -58,9 +64,18 @@ import { zonaLabel } from '../shared/zona';
                   </td>
                   <td class="text-sm text-base-content/60">{{ s.createdAt | date: 'short' }}</td>
                   <td class="text-right">
-                    <button class="btn btn-primary btn-sm rounded-full" (click)="abrir(s)">
-                      Asignar
-                    </button>
+                    @if (pagoDe(s).estado === 'PAGADO') {
+                      <button class="btn btn-primary btn-sm rounded-full" (click)="abrir(s)">
+                        Asignar
+                      </button>
+                    } @else {
+                      <span
+                        class="text-xs text-base-content/50"
+                        title="La solicitud no se puede asignar hasta que el productor pague"
+                      >
+                        Sin pago
+                      </span>
+                    }
                   </td>
                 </tr>
               }
@@ -136,6 +151,7 @@ export class ColaSolicitudesComponent implements OnInit {
   private readonly feedback = inject(UiFeedbackService);
 
   protected readonly label = zonaLabel;
+  protected readonly pagoDe = pagoDe;
 
   protected readonly cargando = signal(true);
   protected readonly pendientes = signal<Solicitud[]>([]);

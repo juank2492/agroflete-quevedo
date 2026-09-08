@@ -7,6 +7,7 @@ import type {
   Logger,
   Notifier,
   PasswordHasher,
+  PushSender,
   TokenService,
 } from './ports/services.js';
 
@@ -17,6 +18,8 @@ export interface AppConfig {
   adminEmail: string;
   /** Radio de confirmación automática de entrega. */
   geocercaAcopioM: number;
+  /** Exige que la solicitud tenga el pago confirmado antes de poder asignarla. */
+  pagoObligatorio: boolean;
 }
 
 /** Dependencias recibidas por los casos de uso. */
@@ -29,6 +32,7 @@ export interface AppContext {
   hasher: PasswordHasher;
   events: EventBus;
   notifier: Notifier;
+  push: PushSender;
   geocoding: GeocodingPort;
   routing: RoutingPort;
   repos: Repositories;

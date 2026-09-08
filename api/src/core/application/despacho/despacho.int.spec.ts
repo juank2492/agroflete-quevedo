@@ -64,6 +64,22 @@ describe('despacho / solicitudes (integración con DynamoDB Local)', () => {
     expect(pend.some((e) => e.tipo === 'SolicitudCreada')).toBe(true);
   });
 
+  it('crearSolicitud con la misma idempotencyKey no duplica: devuelve la existente', async () => {
+    if (!disponible) return;
+    const key = '11111111-2222-4333-8444-555555555555';
+    const primera = await crearSolicitud(h.ctx, 'p-idem', { ...input, idempotencyKey: key });
+    const reintento = await crearSolicitud(h.ctx, 'p-idem', {
+      ...input,
+      pesoTon: 20, // distinto: se ignora, gana la primera
+      idempotencyKey: key,
+    });
+    expect(reintento.id).toBe(primera.id);
+    expect(reintento.pesoTon).toBe(primera.pesoTon);
+
+    const propias = await listarSolicitudes(h.ctx, productor('p-idem'), {});
+    expect(propias.filter((s) => s.idempotencyKey === key)).toHaveLength(1);
+  });
+
   it('crearSolicitud con acopio inexistente lanza NotFoundError', async () => {
     if (!disponible) return;
     await expect(

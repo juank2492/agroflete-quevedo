@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { cultivoSchema, estadoFleteSchema, tipoEventoSchema } from './domain.js';
+import { metodoPagoSchema } from './dtos/pago.js';
 
 /** Contratos de eventos de dominio validados por sus esquemas. */
 export const eventPayloadSchemas = {
@@ -75,6 +76,25 @@ export const eventPayloadSchemas = {
     email: z.string(),
     nombreCompleto: z.string(),
     passwordTemporal: z.string(),
+  }),
+  /** El pago de la solicitud quedó confirmado: ya puede entrar a la cola de asignación. */
+  PagoAprobado: z.object({
+    solicitudId: z.string(),
+    productorId: z.string(),
+    monto: z.number(),
+    metodo: metodoPagoSchema,
+  }),
+  PagoRechazado: z.object({
+    solicitudId: z.string(),
+    productorId: z.string(),
+    metodo: metodoPagoSchema,
+    motivo: z.string().optional(),
+  }),
+  /** Un depósito quedó pendiente de revisión manual por el administrador. */
+  PagoEnRevision: z.object({
+    solicitudId: z.string(),
+    productorId: z.string(),
+    monto: z.number(),
   }),
 } as const;
 

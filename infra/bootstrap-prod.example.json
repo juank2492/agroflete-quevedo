@@ -1,0 +1,16 @@
+{
+  "admin": {
+    "email": "administrador@example.com",
+    "nombreCompleto": "Administración AgroFlete",
+    "telefono": "0999999999"
+  },
+  "acopios": [
+    {
+      "id": "reemplazar-id",
+      "nombre": "Reemplazar con el nombre real",
+      "lat": -1.0289,
+      "lon": -79.4646,
+      "zona": "quevedo-centro"
+    }
+  ]
+}

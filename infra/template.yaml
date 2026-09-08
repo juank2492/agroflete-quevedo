@@ -1,9 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: >
-  AgroFlete Quevedo - plataforma serverless de optimizacion de fletes agricolas.
-  Infraestructura como codigo (AWS SAM). Se DESPLIEGA en la Fase A, cuando el
-  sistema ya funciona 100% en local. Aqui solo se escribe y se valida con `sam validate`.
+Description: AgroFlete Quevedo - API, procesos asincronos y frontend serverless.
 
 Parameters:
   Etapa:
@@ -12,35 +9,65 @@ Parameters:
     AllowedValues: [dev, prod]
   WebOrigin:
     Type: String
-    Default: http://localhost:4200
-    Description: Origen permitido para CORS del portal Angular.
+    Default: https://example.invalid
+    AllowedPattern: ^https://[^/]+$
+    Description: URL HTTPS de CloudFront sin barra final.
+  AppSecretArn:
+    Type: String
+    AllowedPattern: ^arn:aws[a-zA-Z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$
+    Description: ARN del secreto JSON con JWT, SMTP y VAPID.
+  AdminEmail:
+    Type: String
+    AllowedPattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+    Description: Correo del administrador y receptor de alarmas.
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    AllowedValues: [7, 14, 30, 60, 90, 120, 180, 365]
 
 Globals:
   Function:
-    Runtime: nodejs20.x
+    Runtime: nodejs24.x
     Architectures: [arm64]
     MemorySize: 512
-    Timeout: 15
+    Timeout: 25
     Tracing: Active
     Environment:
       Variables:
-        TABLE_NAME: !Ref TablaPrincipal
         NODE_ENV: production
+        TABLE_NAME: !Ref TablaPrincipal
         WEB_ORIGIN: !Ref WebOrigin
-  Api:
-    Cors:
-      AllowMethods: "'GET,POST,PUT,PATCH,DELETE,OPTIONS'"
-      AllowHeaders: "'Content-Type,Authorization'"
-      AllowOrigin: !Sub "'${WebOrigin}'"
+        APP_SECRET_ARN: !Ref AppSecretArn
+        LOG_LEVEL: info
+        JWT_EXPIRES_IN: 8h
+        CONF_CODE_TTL_MINUTES: 15
+        ADMIN_EMAIL: !Ref AdminEmail
+        PAGO_OBLIGATORIO: 1
+        RETRASO_UMBRAL_HORAS: 6
+        OSRM_URL: https://router.project-osrm.org
+        GEOCERCA_ACOPIO_M: 300
+        GEO_CENTRO_LAT: '-1.03'
+        GEO_CENTRO_LON: '-79.46'
+        GEO_RADIO_KM: 90
+    Tags:
+      Aplicacion: agroflete
+      Etapa: !Ref Etapa
 
 Resources:
   TablaPrincipal:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub 'AgrofleteTable-${Etapa}'
       BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
+      SSESpecification:
+        SSEEnabled: true
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
       AttributeDefinitions:
         - { AttributeName: PK, AttributeType: S }
         - { AttributeName: SK, AttributeType: S }
@@ -90,43 +117,592 @@ Resources:
             - { AttributeName: gsi6pk, KeyType: HASH }
             - { AttributeName: gsi6sk, KeyType: RANGE }
           Projection: { ProjectionType: ALL }
+      Tags:
+        - { Key: Aplicacion, Value: agroflete }
+        - { Key: Etapa, Value: !Ref Etapa }
 
-  BusEventos:
-    Type: AWS::Events::EventBus
+  ApiAccessLogs:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
-      Name: !Sub 'agroflete-bus-${Etapa}'
-
-  ColaNotificaciones:
-    Type: AWS::SQS::Queue
-    Properties:
-      QueueName: !Sub 'agroflete-notificaciones-${Etapa}'
-      RedrivePolicy:
-        deadLetterTargetArn: !GetAtt ColaNotificacionesDLQ.Arn
-        maxReceiveCount: 5
-
-  ColaNotificacionesDLQ:
-    Type: AWS::SQS::Queue
-    Properties:
-      QueueName: !Sub 'agroflete-notificaciones-dlq-${Etapa}'
+      LogGroupName: !Sub '/aws/apigateway/agroflete-${Etapa}'
+      RetentionInDays: !Ref LogRetentionDays
 
   HttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
+      Name: !Sub 'agroflete-api-${Etapa}'
       StageName: !Ref Etapa
+      FailOnWarnings: true
+      AccessLogSettings:
+        DestinationArn: !GetAtt ApiAccessLogs.Arn
+        Format: >-
+          {"requestId":"$context.requestId","ip":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","routeKey":"$context.routeKey","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength","integrationError":"$context.integrationErrorMessage"}
+      DefaultRouteSettings:
+        DetailedMetricsEnabled: true
+        ThrottlingBurstLimit: 100
+        ThrottlingRateLimit: 50
 
-  FnHealth:
+  FnApi:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'agroflete-health-${Etapa}'
-      CodeUri: ../api/dist/
-      Handler: entrypoints/lambda/health.handler
+      FunctionName: !Sub 'agroflete-api-${Etapa}'
+      Description: API Express de AgroFlete.
+      CodeUri: ../api/
+      Handler: src/entrypoints/lambda/api.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TablaPrincipal
+        - Statement:
+            - Sid: LeerSecretoAplicacion
+              Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !Ref AppSecretArn
       Events:
-        Salud:
+        Raiz:
           Type: HttpApi
           Properties:
             ApiId: !Ref HttpApi
-            Method: GET
-            Path: /salud
+            Method: ANY
+            Path: /
+            PayloadFormatVersion: '2.0'
+        Proxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: ANY
+            Path: /{proxy+}
+            PayloadFormatVersion: '2.0'
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Format: cjs
+        Minify: true
+        OutExtension:
+          - .js=.cjs
+        Sourcemap: false
+        Target: es2022
+
+  FnApiLogs:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${FnApi}'
+      RetentionInDays: !Ref LogRetentionDays
+
+  ColaErroresOutbox:
+    Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      QueueName: !Sub 'agroflete-outbox-dlq-${Etapa}'
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+
+  FnProcesarOutbox:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'agroflete-outbox-${Etapa}'
+      Description: Procesa eventos persistidos en el outbox.
+      CodeUri: ../api/
+      Handler: src/entrypoints/lambda/outbox.handler
+      MemorySize: 768
+      Timeout: 120
+      ReservedConcurrentExecutions: 1
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TablaPrincipal
+        - Statement:
+            - Sid: LeerSecretoAplicacion
+              Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !Ref AppSecretArn
+            - Sid: EnviarFalloOutbox
+              Effect: Allow
+              Action: sqs:SendMessage
+              Resource: !GetAtt ColaErroresOutbox.Arn
+      Events:
+        OutboxStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt TablaPrincipal.StreamArn
+            StartingPosition: LATEST
+            BatchSize: 10
+            MaximumBatchingWindowInSeconds: 1
+            BisectBatchOnFunctionError: true
+            MaximumRecordAgeInSeconds: 21600
+            MaximumRetryAttempts: 5
+            ParallelizationFactor: 1
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+            DestinationConfig:
+              OnFailure:
+                Destination: !GetAtt ColaErroresOutbox.Arn
+            FilterCriteria:
+              Filters:
+                - Pattern: '{"eventName":["INSERT"],"dynamodb":{"NewImage":{"SK":{"S":["EVENTO"]},"gsi6pk":{"S":["OUTBOX#PENDIENTE"]}}}}'
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Format: cjs
+        Minify: true
+        OutExtension:
+          - .js=.cjs
+        Sourcemap: false
+        Target: es2022
+
+  FnProcesarOutboxLogs:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${FnProcesarOutbox}'
+      RetentionInDays: !Ref LogRetentionDays
+
+  RolSchedulerOutbox:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvocarRecuperacionOutbox
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt FnProcesarOutbox.Arn
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt ColaErroresOutbox.Arn
+
+  ProgramacionRecuperarOutbox:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'agroflete-recuperar-outbox-${Etapa}'
+      Description: Recupera periodicamente eventos que sigan pendientes.
+      ScheduleExpression: rate(5 minutes)
+      State: ENABLED
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !GetAtt FnProcesarOutbox.Arn
+        RoleArn: !GetAtt RolSchedulerOutbox.Arn
+        Input: '{"source":"agroflete.outbox-recovery"}'
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 3600
+          MaximumRetryAttempts: 3
+        DeadLetterConfig:
+          Arn: !GetAtt ColaErroresOutbox.Arn
+
+  ColaErroresScheduler:
+    Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      QueueName: !Sub 'agroflete-scheduler-dlq-${Etapa}'
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+
+  FnDetectarRetrasos:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'agroflete-retrasos-${Etapa}'
+      Description: Detecta solicitudes pendientes fuera del umbral.
+      CodeUri: ../api/
+      Handler: src/entrypoints/lambda/retrasos.handler
+      Timeout: 60
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TablaPrincipal
+        - Statement:
+            - Sid: LeerSecretoAplicacion
+              Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !Ref AppSecretArn
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Format: cjs
+        Minify: true
+        OutExtension:
+          - .js=.cjs
+        Sourcemap: false
+        Target: es2022
+
+  FnDetectarRetrasosLogs:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${FnDetectarRetrasos}'
+      RetentionInDays: !Ref LogRetentionDays
+
+  RolSchedulerRetrasos:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvocarRetrasos
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt FnDetectarRetrasos.Arn
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt ColaErroresScheduler.Arn
+
+  ProgramacionRetrasos:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'agroflete-detectar-retrasos-${Etapa}'
+      Description: Revisa solicitudes pendientes cada 15 minutos.
+      ScheduleExpression: rate(15 minutes)
+      State: ENABLED
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !GetAtt FnDetectarRetrasos.Arn
+        RoleArn: !GetAtt RolSchedulerRetrasos.Arn
+        Input: '{"source":"agroflete.scheduler"}'
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 3600
+          MaximumRetryAttempts: 3
+        DeadLetterConfig:
+          Arn: !GetAtt ColaErroresScheduler.Arn
+
+  BucketFrontend:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - { Key: Aplicacion, Value: agroflete }
+        - { Key: Etapa, Value: !Ref Etapa }
+
+  AccesoCloudFrontS3:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub 'agroflete-s3-${Etapa}'
+        Description: Acceso privado de CloudFront al frontend.
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  CacheFrontend:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: !Sub 'agroflete-frontend-${Etapa}'
+        Comment: Respeta Cache-Control de los archivos publicados.
+        DefaultTTL: 0
+        MaxTTL: 31536000
+        MinTTL: 0
+        ParametersInCacheKeyAndForwardedToOrigin:
+          CookiesConfig:
+            CookieBehavior: none
+          EnableAcceptEncodingBrotli: true
+          EnableAcceptEncodingGzip: true
+          HeadersConfig:
+            HeaderBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
+
+  CabecerasSeguridad:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub 'agroflete-seguridad-${Etapa}'
+        SecurityHeadersConfig:
+          ContentTypeOptions:
+            Override: true
+          FrameOptions:
+            FrameOption: DENY
+            Override: true
+          ReferrerPolicy:
+            ReferrerPolicy: strict-origin-when-cross-origin
+            Override: true
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 31536000
+            IncludeSubdomains: true
+            Override: true
+          XSSProtection:
+            ModeBlock: true
+            Protection: true
+            Override: true
+
+  FnSpaRewrite:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub 'agroflete-spa-${Etapa}'
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Reescribe navegaciones Angular a index.html.
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          var segment = request.uri.substring(request.uri.lastIndexOf('/') + 1);
+          if (request.uri.endsWith('/') || segment.indexOf('.') === -1) {
+            request.uri = '/index.html';
+          }
+          return request;
+        }
+
+  FnQuitarPrefijoApi:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub 'agroflete-api-prefix-${Etapa}'
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Quita el prefijo publico /api antes de API Gateway.
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          request.uri = request.uri === '/api' ? '/' : request.uri.substring(4);
+          return request;
+        }
+
+  DistribucionFrontend:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub 'AgroFlete ${Etapa}'
+        Enabled: true
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        DefaultRootObject: index.html
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: frontend-s3
+            DomainName: !GetAtt BucketFrontend.RegionalDomainName
+            OriginAccessControlId: !GetAtt AccesoCloudFrontS3.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+          - Id: backend-api
+            DomainName: !Sub '${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}'
+            OriginPath: !Sub '/${Etapa}'
+            CustomOriginConfig:
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+        DefaultCacheBehavior:
+          TargetOriginId: frontend-s3
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD, OPTIONS]
+          CachePolicyId: !Ref CacheFrontend
+          ResponseHeadersPolicyId: !Ref CabecerasSeguridad
+          Compress: true
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt FnSpaRewrite.FunctionARN
+        CacheBehaviors:
+          - PathPattern: /api
+            TargetOriginId: backend-api
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]
+            CachedMethods: [GET, HEAD, OPTIONS]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+            ResponseHeadersPolicyId: !Ref CabecerasSeguridad
+            Compress: true
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN: !GetAtt FnQuitarPrefijoApi.FunctionARN
+          - PathPattern: /api/*
+            TargetOriginId: backend-api
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]
+            CachedMethods: [GET, HEAD, OPTIONS]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+            ResponseHeadersPolicyId: !Ref CabecerasSeguridad
+            Compress: true
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN: !GetAtt FnQuitarPrefijoApi.FunctionARN
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+  PoliticaBucketFrontend:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref BucketFrontend
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PermitirCloudFront
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${BucketFrontend.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${DistribucionFrontend}'
+
+  TemaAlertas:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'agroflete-alertas-${Etapa}'
+
+  SuscripcionAlertasEmail:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      Endpoint: !Ref AdminEmail
+      TopicArn: !Ref TemaAlertas
+
+  AlarmaErroresApi:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'agroflete-api-errores-${Etapa}'
+      AlarmDescription: La API Lambda registro errores.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref FnApi
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref TemaAlertas
+
+  AlarmaCincoXxApi:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'agroflete-api-5xx-${Etapa}'
+      AlarmDescription: API Gateway devolvio respuestas 5xx.
+      Namespace: AWS/ApiGateway
+      MetricName: 5xx
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref HttpApi
+        - Name: Stage
+          Value: !Ref Etapa
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref TemaAlertas
+
+  AlarmaThrottlingDynamo:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'agroflete-dynamodb-throttling-${Etapa}'
+      AlarmDescription: DynamoDB rechazo solicitudes por capacidad.
+      Namespace: AWS/DynamoDB
+      MetricName: ThrottledRequests
+      Dimensions:
+        - Name: TableName
+          Value: !Ref TablaPrincipal
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref TemaAlertas
+
+  AlarmaEdadOutbox:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'agroflete-outbox-retrasado-${Etapa}'
+      AlarmDescription: El consumidor de DynamoDB Streams lleva mas de cinco minutos de retraso.
+      Namespace: AWS/Lambda
+      MetricName: IteratorAge
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref FnProcesarOutbox
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 300000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref TemaAlertas
+
+  AlarmaColaOutbox:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'agroflete-outbox-dlq-${Etapa}'
+      AlarmDescription: Hay eventos de outbox agotados en la cola de errores.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt ColaErroresOutbox.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref TemaAlertas
+
+  AlarmaColaScheduler:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'agroflete-scheduler-dlq-${Etapa}'
+      AlarmDescription: Scheduler no pudo invocar la revision de retrasos.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt ColaErroresScheduler.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref TemaAlertas
 
   PanelMetricas:
     Type: AWS::CloudWatch::Dashboard
@@ -135,30 +711,27 @@ Resources:
       DashboardBody: !Sub |
         {
           "widgets": [
-            { "type": "metric", "x": 0, "y": 0, "width": 12, "height": 6,
-              "properties": { "title": "Lambda - Init Duration (cold start)",
-                "region": "${AWS::Region}",
-                "metrics": [ [ "AWS/Lambda", "InitDuration", "FunctionName", "${FnHealth}" ] ] } },
-            { "type": "metric", "x": 12, "y": 0, "width": 12, "height": 6,
-              "properties": { "title": "Lambda - Duration / Max Memory",
-                "region": "${AWS::Region}",
-                "metrics": [
-                  [ "AWS/Lambda", "Duration", "FunctionName", "${FnHealth}" ],
-                  [ "AWS/Lambda", "Errors", "FunctionName", "${FnHealth}" ] ] } },
-            { "type": "metric", "x": 0, "y": 6, "width": 24, "height": 6,
-              "properties": { "title": "API Gateway - Latencia p50/p95",
-                "region": "${AWS::Region}",
-                "metrics": [
-                  [ "AWS/ApiGateway", "Latency", "ApiId", "${HttpApi}", { "stat": "p50" } ],
-                  [ "AWS/ApiGateway", "Latency", "ApiId", "${HttpApi}", { "stat": "p95" } ] ] } }
+            {"type":"metric","x":0,"y":0,"width":12,"height":6,"properties":{"title":"API Lambda","region":"${AWS::Region}","metrics":[["AWS/Lambda","Invocations","FunctionName","${FnApi}"],[".","Errors",".","."],[".","Duration",".",".",{"stat":"p95"}]]}},
+            {"type":"metric","x":12,"y":0,"width":12,"height":6,"properties":{"title":"Outbox","region":"${AWS::Region}","metrics":[["AWS/Lambda","IteratorAge","FunctionName","${FnProcesarOutbox}",{"stat":"Maximum"}],["AWS/SQS","ApproximateNumberOfMessagesVisible","QueueName","${ColaErroresOutbox.QueueName}"]]}},
+            {"type":"metric","x":0,"y":6,"width":12,"height":6,"properties":{"title":"API Gateway","region":"${AWS::Region}","metrics":[["AWS/ApiGateway","Count","ApiId","${HttpApi}","Stage","${Etapa}"],[".","5xx",".",".",".","."],[".","Latency",".",".",".",".",{"stat":"p95"}]]}},
+            {"type":"metric","x":12,"y":6,"width":12,"height":6,"properties":{"title":"DynamoDB","region":"${AWS::Region}","metrics":[["AWS/DynamoDB","ThrottledRequests","TableName","${TablaPrincipal}"],[".","SystemErrors",".","."]]}}
           ]
         }
 
 Outputs:
   ApiUrl:
-    Description: URL base de la API
-    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Etapa}'
+    Description: URL directa de API Gateway.
+    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${Etapa}'
   TablaNombre:
     Value: !Ref TablaPrincipal
-  BusNombre:
-    Value: !Ref BusEventos
+  FrontendBucketName:
+    Value: !Ref BucketFrontend
+  DistributionId:
+    Value: !Ref DistribucionFrontend
+  FrontendUrl:
+    Description: URL publica de la aplicacion.
+    Value: !Sub 'https://${DistribucionFrontend.DomainName}'
+  OutboxDeadLetterQueueUrl:
+    Value: !Ref ColaErroresOutbox
+  SchedulerDeadLetterQueueUrl:
+    Value: !Ref ColaErroresScheduler

@@ -2,6 +2,11 @@ import type { DomainEvent, EstadoFlete, EventPayloadMap, TipoEvento } from '@agr
 import type { AppContext } from '../../core/app-context.js';
 import { emparejarAutomatico } from '../../core/application/despacho/emparejar-automatico.js';
 import { registrarMovimientoStock } from '../../core/application/inventario/movimiento-stock.js';
+import {
+  notificacionesDe,
+  type AvisoPlantilla,
+} from '../../core/application/notificaciones/plantillas.js';
+import { empujarAviso } from '../../core/application/notificaciones/push.js';
 
 export interface Subscriber {
   nombre: string;
@@ -24,20 +29,23 @@ async function correoDe(ctx: AppContext, userId: string): Promise<string | null>
   return u?.email ?? null;
 }
 
-/** Envía correos (a Mailpit en local) según el tipo de evento. */
+/**
+ * Correo (Mailpit en local) **solo para lo esencial**: credenciales, avisos que
+ * requieren acción del usuario aunque no tenga la app abierta, y alertas de
+ * operación. El resto de avisos va por notificación in-app (`notificaciones-app`).
+ */
 const notificar: Subscriber = {
   nombre: 'notificar',
   tipos: [
     'UsuarioRegistrado',
-    'SolicitudCreada',
-    'FleteAsignado',
+    'TransportistaCreado',
     'EstadoFleteCambiado',
-    'EntregaConfirmada',
     'RetrasoDetectado',
     'IncidenciaEnRuta',
     'StockBajo',
     'StockAlto',
-    'TransportistaCreado',
+    'PagoRechazado',
+    'PagoEnRevision',
   ],
   async handle(ev, ctx) {
     switch (ev.tipo) {
@@ -56,73 +64,19 @@ const notificar: Subscriber = {
         return;
       }
 
-      case 'SolicitudCreada': {
-        const p = ev.payload as EventPayloadMap['SolicitudCreada'];
-        const to = await correoDe(ctx, p.productorId);
-        if (!to) return;
-        await ctx.notifier.enviarEmail({
-          to,
-          subject: 'Solicitud recibida — AgroFlete',
-          text:
-            `Recibimos tu solicitud de flete (${p.cultivo}).\n` +
-            `Tarifa estimada: $${p.tarifaEstimada.toFixed(2)}.\n\n` +
-            `Te avisaremos cuando se asigne un transportista.`,
-        });
-        return;
-      }
-
-      case 'FleteAsignado': {
-        const p = ev.payload as EventPayloadMap['FleteAsignado'];
-        const [prodEmail, transEmail] = await Promise.all([
-          correoDe(ctx, p.productorId),
-          correoDe(ctx, p.transportistaId),
-        ]);
-        if (prodEmail) {
-          await ctx.notifier.enviarEmail({
-            to: prodEmail,
-            subject: 'Se asignó un transportista a tu carga — AgroFlete',
-            text: p.auto
-              ? `El sistema asignó automáticamente un transportista a tu solicitud. ` +
-                `Podrás seguir el estado del flete desde tu panel.`
-              : `Tu solicitud ya tiene transportista asignado. Podrás seguir el estado del flete desde tu panel.`,
-          });
-        }
-        if (transEmail) {
-          await ctx.notifier.enviarEmail({
-            to: transEmail,
-            subject: 'Nuevo flete asignado — AgroFlete',
-            text: `Se te asignó un nuevo flete. Revisa los detalles en "Mis fletes" y actualiza el estado del viaje.`,
-          });
-        }
-        return;
-      }
-
       case 'EstadoFleteCambiado': {
+        // Por correo solo la cancelación (con su motivo); el resto va in-app.
         const p = ev.payload as EventPayloadMap['EstadoFleteCambiado'];
-        if (p.estado === 'ENTREGADO') return;
+        if (p.estado !== 'CANCELADO') return;
         const to = await correoDe(ctx, p.productorId);
         if (!to) return;
         await ctx.notifier.enviarEmail({
           to,
-          subject: `Tu flete cambió de estado — AgroFlete`,
+          subject: 'Tu flete fue cancelado — AgroFlete',
           text:
             `Tu flete pasó a: ${ESTADO_LABEL[p.estado]}.` +
             (p.motivo ? `\nMotivo: "${p.motivo}"` : '') +
-            (p.estado === 'CANCELADO'
-              ? `\n\nTu solicitud volvió a la cola y se reasignará a otro vehículo.`
-              : ''),
-        });
-        return;
-      }
-
-      case 'EntregaConfirmada': {
-        const p = ev.payload as EventPayloadMap['EntregaConfirmada'];
-        const to = await correoDe(ctx, p.productorId);
-        if (!to) return;
-        await ctx.notifier.enviarEmail({
-          to,
-          subject: 'Carga entregada — AgroFlete',
-          text: `Tu carga fue entregada en el centro de acopio. ¡Gracias por usar AgroFlete!`,
+            `\n\nTu solicitud volvió a la cola y se reasignará a otro vehículo.`,
         });
         return;
       }
@@ -181,6 +135,32 @@ const notificar: Subscriber = {
         return;
       }
 
+      case 'PagoRechazado': {
+        const p = ev.payload as EventPayloadMap['PagoRechazado'];
+        const to = await correoDe(ctx, p.productorId);
+        if (!to) return;
+        await ctx.notifier.enviarEmail({
+          to,
+          subject: 'Tu pago no se pudo procesar — AgroFlete',
+          text:
+            `No pudimos confirmar tu pago${p.motivo ? ` (${p.motivo})` : ''}.\n` +
+            `Vuelve a intentarlo desde el detalle de la solicitud, con otra tarjeta o por depósito.`,
+        });
+        return;
+      }
+
+      case 'PagoEnRevision': {
+        const p = ev.payload as EventPayloadMap['PagoEnRevision'];
+        await ctx.notifier.enviarEmail({
+          to: ctx.config.adminEmail,
+          subject: 'Comprobante de depósito por revisar — AgroFlete',
+          text:
+            `Un productor registró un depósito de $${p.monto.toFixed(2)} para la solicitud ${p.solicitudId}.\n` +
+            `Revísalo en el panel de Pagos para liberar la solicitud a la cola.`,
+        });
+        return;
+      }
+
       case 'TransportistaCreado': {
         const p = ev.payload as EventPayloadMap['TransportistaCreado'];
         await ctx.notifier.enviarEmail({
@@ -202,6 +182,53 @@ const notificar: Subscriber = {
   },
 };
 
+/** Crea los avisos in-app (campanita) para cada evento de cara al usuario. */
+const notificacionesApp: Subscriber = {
+  nombre: 'notificaciones-app',
+  tipos: [
+    'SolicitudCreada',
+    'PagoAprobado',
+    'PagoRechazado',
+    'PagoEnRevision',
+    'FleteAsignado',
+    'EstadoFleteCambiado',
+    'EntregaConfirmada',
+    'RetrasoDetectado',
+    'IncidenciaEnRuta',
+    'StockBajo',
+    'StockAlto',
+  ],
+  async handle(ev, ctx) {
+    const avisos = notificacionesDe(ev);
+    if (avisos.length === 0) return;
+
+    const p = ev.payload as Record<string, unknown>;
+    const idAdmin = async (): Promise<string | null> =>
+      (await ctx.repos.usuarios.porEmail(ctx.config.adminEmail))?.id ?? null;
+
+    const destinatario = async (a: AvisoPlantilla): Promise<string | null> => {
+      if (a.para === 'productor') return (p['productorId'] as string) ?? null;
+      if (a.para === 'transportista') return (p['transportistaId'] as string) ?? null;
+      return idAdmin();
+    };
+
+    for (const a of avisos) {
+      const userId = await destinatario(a);
+      if (!userId) continue;
+      await ctx.repos.notificaciones.crear({
+        id: ctx.ids.ulid(),
+        userId,
+        categoria: a.categoria,
+        titulo: a.titulo,
+        cuerpo: a.cuerpo,
+        ...(a.enlace ? { enlace: a.enlace } : {}),
+        createdAt: ctx.clock.nowIso(),
+      });
+      await empujarAviso(ctx, userId, a);
+    }
+  },
+};
+
 /** Suma la carga entregada al inventario del centro de acopio. */
 const actualizarStock: Subscriber = {
   nombre: 'actualizar-stock',
@@ -216,16 +243,25 @@ const actualizarStock: Subscriber = {
   },
 };
 
-/** Intenta asignar cada solicitud nueva a un vehículo compatible (si está activo). */
+/**
+ * Intenta asignar una solicitud a un vehículo compatible (si el emparejamiento
+ * automático está activo). Se dispara al crearla y también al confirmarse el
+ * pago, porque una solicitud sin pago no puede asignarse.
+ */
 const emparejador: Subscriber = {
   nombre: 'emparejar-automatico',
-  tipos: ['SolicitudCreada'],
+  tipos: ['SolicitudCreada', 'PagoAprobado'],
   async handle(ev, ctx) {
-    const p = ev.payload as EventPayloadMap['SolicitudCreada'];
     const { autoEmparejar } = await ctx.repos.ajustes.obtener();
     if (!autoEmparejar) return;
-    await emparejarAutomatico(ctx, p.solicitudId);
+    const { solicitudId } = ev.payload as { solicitudId: string };
+    await emparejarAutomatico(ctx, solicitudId);
   },
 };
 
-export const subscribers: Subscriber[] = [notificar, actualizarStock, emparejador];
+export const subscribers: Subscriber[] = [
+  notificar,
+  notificacionesApp,
+  actualizarStock,
+  emparejador,
+];

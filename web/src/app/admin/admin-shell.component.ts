@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from '../core/auth.service';
 import { IconComponent } from '../core/icon.component';
+import { NotificacionesComponent } from '../shared/notificaciones.component';
 
 interface NavItem {
   path: string;
@@ -11,7 +12,7 @@ interface NavItem {
 
 @Component({
   selector: 'app-admin-shell',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, IconComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, IconComponent, NotificacionesComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex min-h-screen bg-base-200">
@@ -55,6 +56,7 @@ interface NavItem {
           </div>
           <span class="text-sm font-semibold">Panel de administración</span>
           <div class="flex items-center gap-3">
+            <app-notificaciones />
             <span class="hidden text-sm text-base-content/70 sm:inline">{{ auth.nombre() }}</span>
             <button class="btn btn-ghost btn-sm" (click)="salir()">Salir</button>
           </div>
@@ -71,9 +73,10 @@ export class AdminShellComponent {
   protected readonly nav: NavItem[] = [
     { path: 'solicitudes', label: 'Solicitudes', icon: 'leaf' },
     { path: 'fletes', label: 'Fletes', icon: 'truck' },
+    { path: 'pagos', label: 'Pagos', icon: 'dollar' },
     { path: 'flota', label: 'Flota', icon: 'users' },
     { path: 'inventario', label: 'Inventario', icon: 'box' },
-    { path: 'tarifas', label: 'Tarifas', icon: 'dollar' },
+    { path: 'tarifas', label: 'Tarifas', icon: 'receipt' },
     { path: 'metricas', label: 'Métricas', icon: 'chart' },
     { path: 'ajustes', label: 'Ajustes', icon: 'sliders' },
     { path: 'perfil', label: 'Mi perfil', icon: 'user' },

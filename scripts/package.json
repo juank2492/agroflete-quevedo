@@ -9,6 +9,7 @@
     "migrate": "tsx --env-file-if-exists=../.env.local src/migrate.ts",
     "migrate:reset": "tsx --env-file-if-exists=../.env.local src/migrate.ts --reset",
     "seed": "tsx --env-file-if-exists=../.env.local src/seed.ts",
+    "bootstrap:prod": "tsx src/bootstrap-prod.ts",
     "simular-ruta": "tsx --env-file-if-exists=../.env.local src/simular-ruta.ts",
     "load": "tsx --env-file-if-exists=../.env.local src/load.ts",
     "coldstart": "tsx --env-file-if-exists=../.env.local src/coldstart.ts",

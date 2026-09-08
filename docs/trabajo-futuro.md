@@ -30,15 +30,21 @@
 > en runtime (gratuitas, sin clave): tiles OSM, OSRM demo, Photon/Nominatim (ver `arquitectura.md`).
 > Ver SRS RF-3.6, RF-5.7, RF-5.8.
 
-## 1. PWA offline con cola de reintento
+> ✅ **Implementado (parcial):** _Cola offline de solicitudes_. Al confirmar sin conexión, la
+> solicitud se guarda en **IndexedDB** (`SolicitudesColaService` + `core/idb.ts`) y se reenvía al
+> recuperar la red o al reabrir la app; el backend deduplica por `idempotencyKey`. Ver SRS RF-3.1a.
+> Queda como futuro el reintento con la app cerrada (Service Worker + **Background Sync**).
 
-- Service Worker con estrategia de cola: si `POST /solicitudes` falla sin conexión, se guarda en
-  IndexedDB y se reintenta al recuperar red (Background Sync).
+## 1. PWA offline — reintento con la app cerrada
 
-## 2. Notificaciones SMS y push
+- Elevar la cola de `SolicitudesColaService` al Service Worker con **Background Sync**, para
+  reenviar incluso sin la pestaña abierta. La deduplicación por `idempotencyKey` ya está lista.
 
-- SNS SMS para alertas críticas; Web Push para el portal.
+> ✅ **Implementado:** _Web Push_. `SwPush` + `web-push` (VAPID), `PushSubscriptionRepository`,
+> subscriber `notificaciones-app` que empuja cada aviso, rutas `/notificaciones/push/*`. Opcional
+> (sin claves VAPID queda apagado) y solo activo en el build de producción. Ver SRS RF-6.4.
+> SMS descartado por decisión del usuario.
 
-## 3. E2E automatizado
+## 2. E2E automatizado
 
 - Playwright cubriendo el guion de demo completo (registro → solicitud → asignación → entrega → alertas).

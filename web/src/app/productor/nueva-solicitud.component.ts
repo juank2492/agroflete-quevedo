@@ -14,6 +14,7 @@ import { debounceTime } from 'rxjs';
 import {
   haversineKm,
   type Acopio,
+  type CrearSolicitudRequest,
   type CultivoOpcion,
   type EstimacionTarifaResponse,
   type LatLon,
@@ -21,11 +22,13 @@ import {
 } from '@agroflete/shared';
 import { IconComponent } from '../core/icon.component';
 import { SolicitudService } from '../core/solicitud.service';
+import { SolicitudesColaService } from '../core/solicitudes-cola.service';
 import { TarifaService } from '../core/tarifa.service';
 import { UiFeedbackService } from '../core/ui-feedback.service';
 import { apiMessage } from '../core/http-error';
 import { TarifaCardComponent } from '../shared/tarifa-card.component';
 import { BuscadorLugarComponent } from '../shared/buscador-lugar.component';
+import { tipoVehiculoLabel } from '../shared/vehiculo-labels';
 
 type GeoEstado = 'pidiendo' | 'ok' | 'denegado' | 'no-soportado';
 
@@ -166,6 +169,15 @@ type GeoEstado = 'pidiendo' | 'ok' | 'denegado' | 'no-soportado';
           [cargando]="estimando()"
         />
 
+        @if (errorEstimacion(); as e) {
+          <p class="rounded-field bg-error/10 px-3 py-2 text-sm text-error">{{ e }}</p>
+        } @else if (estimacion(); as est) {
+          <p class="text-xs text-base-content/60">
+            Se transportará en <b>{{ tipoLabel(est.categoria) }}</b> (hasta
+            {{ est.capacidadMaxTon }} t). El peso y el tipo de vehículo influyen en la tarifa.
+          </p>
+        }
+
         <div class="border-t border-base-300 pt-5">
           @if (!origen()) {
             <p class="mb-2 text-center text-xs text-base-content/50">
@@ -175,7 +187,7 @@ type GeoEstado = 'pidiendo' | 'ok' | 'denegado' | 'no-soportado';
           <button
             type="submit"
             class="btn btn-primary btn-block rounded-full"
-            [disabled]="enviando() || form.invalid || !origen()"
+            [disabled]="enviando() || form.invalid || !origen() || !!errorEstimacion()"
           >
             @if (enviando()) {
               <span class="loading loading-spinner loading-sm"></span>
@@ -191,6 +203,7 @@ export class NuevaSolicitudComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
   private readonly tarifa = inject(TarifaService);
   private readonly solicitud = inject(SolicitudService);
+  private readonly cola = inject(SolicitudesColaService);
   private readonly feedback = inject(UiFeedbackService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
@@ -204,6 +217,8 @@ export class NuevaSolicitudComponent implements OnInit {
   protected readonly estimacion = signal<EstimacionTarifaResponse | null>(null);
   protected readonly estimando = signal(false);
   protected readonly enviando = signal(false);
+  protected readonly errorEstimacion = signal<string | null>(null);
+  protected readonly tipoLabel = tipoVehiculoLabel;
 
   protected readonly form = this.fb.nonNullable.group({
     acopioId: ['', [Validators.required]],
@@ -247,6 +262,7 @@ export class NuevaSolicitudComponent implements OnInit {
     this.origen.set(null);
     this.origenNombre.set(null);
     this.estimacion.set(null);
+    this.errorEstimacion.set(null);
   }
 
   pedirUbicacion(): void {
@@ -296,16 +312,22 @@ export class NuevaSolicitudComponent implements OnInit {
   private estimar(): void {
     const o = this.origen();
     const acopioId = this.form.controls.acopioId.value;
-    if (!o || !acopioId) return;
+    const pesoTon = this.form.controls.pesoTon.value;
+    if (!o || !acopioId || !pesoTon) return;
     this.estimando.set(true);
     this.tarifa
-      .estimar({ origen: o, acopioId, cultivo: this.form.controls.cultivo.value })
+      .estimar({ origen: o, acopioId, cultivo: this.form.controls.cultivo.value, pesoTon })
       .subscribe({
         next: (r) => {
           this.estimacion.set(r);
+          this.errorEstimacion.set(null);
           this.estimando.set(false);
         },
-        error: () => this.estimando.set(false),
+        error: (err) => {
+          this.estimacion.set(null);
+          this.errorEstimacion.set(apiMessage(err, 'No se pudo estimar la tarifa'));
+          this.estimando.set(false);
+        },
       });
   }
 
@@ -315,24 +337,56 @@ export class NuevaSolicitudComponent implements OnInit {
       this.form.markAllAsTouched();
       return;
     }
+    const body: CrearSolicitudRequest = {
+      origen: o,
+      ...(this.origenNombre() ? { origenNombre: this.origenNombre()! } : {}),
+      acopioId: this.form.controls.acopioId.value,
+      cultivo: this.form.controls.cultivo.value,
+      pesoTon: this.form.controls.pesoTon.value,
+      idempotencyKey: crypto.randomUUID(),
+    };
+    const resumen = `${this.nombreCultivo()} · ${body.pesoTon} t → ${this.nombreAcopio()}`;
+
+    if (!navigator.onLine) {
+      void this.guardarSinConexion(body, resumen);
+      return;
+    }
+
     this.enviando.set(true);
-    this.solicitud
-      .crear({
-        origen: o,
-        ...(this.origenNombre() ? { origenNombre: this.origenNombre()! } : {}),
-        acopioId: this.form.controls.acopioId.value,
-        cultivo: this.form.controls.cultivo.value,
-        pesoTon: this.form.controls.pesoTon.value,
-      })
-      .subscribe({
-        next: (s) => {
-          this.feedback.success('Solicitud publicada');
-          void this.router.navigate(['/p/solicitudes', s.id]);
-        },
-        error: (err) => {
-          this.enviando.set(false);
-          this.feedback.error(apiMessage(err, 'No se pudo publicar la solicitud'));
-        },
-      });
+    this.solicitud.crear(body).subscribe({
+      next: (s) => {
+        this.feedback.success('Solicitud publicada. Ahora paga la tarifa para que se asigne.');
+        void this.router.navigate(['/p/solicitudes', s.id]);
+      },
+      error: (err) => {
+        this.enviando.set(false);
+        if (SolicitudesColaService.esFalloDeRed(err)) {
+          void this.guardarSinConexion(body, resumen);
+          return;
+        }
+        this.feedback.error(apiMessage(err, 'No se pudo publicar la solicitud'));
+      },
+    });
+  }
+
+  private nombreCultivo(): string {
+    const c = this.form.controls.cultivo.value;
+    return this.cultivos().find((x) => x.clave === c)?.nombre ?? c;
+  }
+
+  private nombreAcopio(): string {
+    const a = this.form.controls.acopioId.value;
+    return this.acopios().find((x) => x.id === a)?.nombre ?? 'acopio';
+  }
+
+  private async guardarSinConexion(body: CrearSolicitudRequest, resumen: string): Promise<void> {
+    await this.cola.encolar({
+      id: body.idempotencyKey!,
+      body,
+      resumen,
+      createdAt: new Date().toISOString(),
+    });
+    this.feedback.success('Sin conexión: la solicitud se guardó y se enviará al reconectar.');
+    void this.router.navigate(['/p/solicitudes']);
   }
 }

@@ -17,6 +17,7 @@ import {
 import {
   claveDesdeNombre,
   type ActualizarReglasRequest,
+  type CategoriaCarga,
   type CultivoTarifa,
   type ReglasTarifa,
 } from '@agroflete/shared';
@@ -25,6 +26,7 @@ import { TarifaService } from '../core/tarifa.service';
 import { UiFeedbackService } from '../core/ui-feedback.service';
 import { apiMessage } from '../core/http-error';
 import { ConfirmService } from '../shared/confirm.service';
+import { tipoVehiculoLabel } from '../shared/vehiculo-labels';
 import type { PuedeDesactivar } from '../shared/unsaved-changes.guard';
 
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -47,8 +49,8 @@ function iniLteFin(group: AbstractControl): { rango: true } | null {
     <div class="mx-auto max-w-3xl">
       <h1 class="text-2xl font-bold">Reglas de tarifa</h1>
       <p class="mt-1 text-sm text-base-content/70">
-        tarifa = base/km × distancia vial × factor del cultivo × (1 + recargo si es temporada de
-        cosecha).
+        tarifa = (base/km + costo/t·km de la categoría × toneladas) × distancia vial × factor del
+        cultivo × (1 + recargo si es temporada de cosecha).
       </p>
 
       @if (cargandoInicial()) {
@@ -79,6 +81,50 @@ function iniLteFin(group: AbstractControl): { rango: true } | null {
                   <span class="mt-1 text-xs text-base-content/50">{{ n.hint }}</span>
                 </label>
               }
+            </div>
+          </div>
+
+          <div class="rounded-box bg-base-100 p-5 shadow-card">
+            <h2 class="font-semibold">Categorías de carga</h2>
+            <p class="mt-1 text-sm text-base-content/60">
+              El peso de la solicitud elige el tipo de vehículo más barato cuya capacidad alcanza.
+              Si supera la mayor, la carga se rechaza.
+            </p>
+            <div class="mt-3 overflow-x-auto">
+              <table class="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Tipo</th>
+                    <th class="text-right">Capacidad máx (t)</th>
+                    <th class="text-right">Costo por t·km (USD)</th>
+                  </tr>
+                </thead>
+                <tbody formArrayName="categorias">
+                  @for (cat of categorias.controls; track cat; let i = $index) {
+                    <tr [formGroupName]="i">
+                      <td class="font-medium">{{ tipoLabel(cat.get('tipo')?.value) }}</td>
+                      <td class="text-right">
+                        <input
+                          type="number"
+                          step="0.5"
+                          formControlName="capacidadMaxTon"
+                          class="input input-bordered input-sm w-28"
+                          [class.input-error]="ctrlMalo(cat, 'capacidadMaxTon')"
+                        />
+                      </td>
+                      <td class="text-right">
+                        <input
+                          type="number"
+                          step="0.005"
+                          formControlName="costoPorTonKm"
+                          class="input input-bordered input-sm w-32"
+                          [class.input-error]="ctrlMalo(cat, 'costoPorTonKm')"
+                        />
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -252,6 +298,7 @@ export class TarifasComponent implements OnInit, PuedeDesactivar {
   protected readonly meses = MESES;
   protected readonly tipNombre = TIP_NOMBRE;
   protected readonly tipFactor = TIP_FACTOR;
+  protected readonly tipoLabel = tipoVehiculoLabel;
   protected readonly cargandoInicial = signal(true);
   protected readonly guardando = signal(false);
 
@@ -283,11 +330,16 @@ export class TarifasComponent implements OnInit, PuedeDesactivar {
     tarifaBaseKm: [0.9, [Validators.required, Validators.min(0.01), Validators.max(50)]],
     recargoTemporada: [0.2, [Validators.required, Validators.min(0), Validators.max(1)]],
     factorSinuosidad: [1.3, [Validators.required, Validators.min(1), Validators.max(2)]],
+    categorias: this.fb.array<FormGroup>([]),
     cultivos: this.fb.array<FormGroup>([]),
   });
 
   protected get cultivos(): FormArray<FormGroup> {
     return this.form.controls.cultivos;
+  }
+
+  protected get categorias(): FormArray<FormGroup> {
+    return this.form.controls.categorias;
   }
 
   protected temporadas(ci: number): FormArray<FormGroup> {
@@ -334,6 +386,17 @@ export class TarifasComponent implements OnInit, PuedeDesactivar {
       },
       { validators: iniLteFin },
     );
+  }
+
+  private nuevaCategoria(c: CategoriaCarga): FormGroup {
+    return this.fb.group({
+      tipo: [c.tipo],
+      capacidadMaxTon: [
+        c.capacidadMaxTon,
+        [Validators.required, Validators.min(0.5), Validators.max(60)],
+      ],
+      costoPorTonKm: [c.costoPorTonKm, [Validators.required, Validators.min(0), Validators.max(5)]],
+    });
   }
 
   private nuevoCultivo(c?: CultivoTarifa): FormGroup {
@@ -408,6 +471,8 @@ export class TarifasComponent implements OnInit, PuedeDesactivar {
       recargoTemporada: r.recargoTemporada,
       factorSinuosidad: r.factorSinuosidad,
     });
+    this.categorias.clear();
+    for (const c of r.categorias) this.categorias.push(this.nuevaCategoria(c));
     this.cultivos.clear();
     for (const c of r.cultivos) {
       const grupo = this.nuevoCultivo(c);
@@ -440,10 +505,24 @@ export class TarifasComponent implements OnInit, PuedeDesactivar {
       };
     });
 
+    const categorias = this.categorias.controls.map((cg): CategoriaCarga => {
+      const raw = cg.getRawValue() as {
+        tipo: CategoriaCarga['tipo'];
+        capacidadMaxTon: number;
+        costoPorTonKm: number;
+      };
+      return {
+        tipo: raw.tipo,
+        capacidadMaxTon: Number(raw.capacidadMaxTon),
+        costoPorTonKm: Number(raw.costoPorTonKm),
+      };
+    });
+
     const payload: ActualizarReglasRequest = {
       tarifaBaseKm: v.tarifaBaseKm,
       recargoTemporada: v.recargoTemporada,
       factorSinuosidad: v.factorSinuosidad,
+      categorias,
       cultivos,
     };
 

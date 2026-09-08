@@ -96,14 +96,14 @@ pnpm infra:down    # apaga los contenedores
 
 ## Documentación (`docs/`)
 
-| Archivo                  | Contenido                                                                                                               |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `arquitectura.md`        | Puertos/adaptadores, equivalencias local ↔ AWS                                                                          |
-| `diagrama-eventos.md`    | Event storming y flujo outbox → worker                                                                                  |
-| `SRS-IEEE830.md`         | Requerimientos funcionales y no funcionales (base IEEE 830)                                                             |
-| `matriz-trazabilidad.md` | Ítem de encuesta → RF → componente → prueba                                                                             |
-| `reporte-metricas.md`    | Carga 100 concurrentes + arranque (local)                                                                               |
-| `costos.md`              | Serverless vs. servidor 24/7                                                                                            |
-| `guion-demo.md`          | Guion paso a paso para la defensa                                                                                       |
-| `trabajo-futuro.md`      | Roadmap: hecho (inventario, emparejamiento auto, seguimiento + ruta + geocerca); pendiente (PWA offline, SMS/push, E2E) |
-| `despliegue-aws.md`      | Runbook de la Fase A (pendiente)                                                                                        |
+| Archivo                  | Contenido                                                                                                                                 |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `arquitectura.md`        | Puertos/adaptadores, equivalencias local ↔ AWS, **checklist de migración (Fase A)**                                                       |
+| `diagrama-eventos.md`    | Event storming y flujo outbox → worker                                                                                                    |
+| `SRS-IEEE830.md`         | Requerimientos funcionales y no funcionales (base IEEE 830)                                                                               |
+| `matriz-trazabilidad.md` | Ítem de encuesta → RF → componente → prueba                                                                                               |
+| `reporte-metricas.md`    | Carga 100 concurrentes + arranque (local)                                                                                                 |
+| `costos.md`              | Serverless vs. servidor 24/7                                                                                                              |
+| `guion-demo.md`          | Guion paso a paso para la defensa                                                                                                         |
+| `trabajo-futuro.md`      | Roadmap: hecho (inventario, emparejamiento auto, seguimiento + ruta + geocerca, cola offline, Web Push); pendiente (Background Sync, E2E) |
+| `despliegue-aws.md`      | Runbook de la Fase A (pendiente)                                                                                                          |

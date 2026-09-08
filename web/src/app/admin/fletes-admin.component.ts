@@ -189,9 +189,14 @@ const REASIGNABLE = new Set<EstadoFlete>(['ASIGNADO', 'EN_CAMINO_ORIGEN', 'CARGA
           </div>
 
           <div class="mt-3 flex items-center justify-between text-sm">
-            <span class="text-base-content/60">Tarifa</span>
+            <span class="text-base-content/60">Tarifa (pagada por el productor)</span>
             <span class="font-semibold text-primary">$ {{ f.tarifa | number: '1.2-2' }}</span>
           </div>
+          @if (f.distanciaVialKm) {
+            <div class="text-xs text-base-content/50">
+              Ruta por carretera: {{ f.distanciaVialKm | number: '1.1-1' }} km (solo referencia).
+            </div>
+          }
 
           @if (f.motivoCancelacion) {
             <p class="mt-3 rounded-field bg-base-200 px-3 py-2 text-sm">

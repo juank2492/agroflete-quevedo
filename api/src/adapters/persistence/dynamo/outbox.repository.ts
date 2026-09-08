@@ -1,4 +1,5 @@
 import {
+  GetCommand,
   PutCommand,
   QueryCommand,
   UpdateCommand,
@@ -11,6 +12,16 @@ const PENDIENTE_PK = 'OUTBOX#PENDIENTE';
 const pk = (id: string) => `OUTBOX#${id}`;
 
 export function makeOutboxRepository(doc: DynamoDBDocumentClient, table: string): OutboxRepository {
+  const toRecord = (it: Record<string, unknown>): OutboxRecord => ({
+    id: it['id'] as string,
+    tipo: it['tipo'] as OutboxRecord['tipo'],
+    payload: it['payload'],
+    createdAt: it['createdAt'] as string,
+    estado: it['estado'] as OutboxRecord['estado'],
+    intentos: (it['intentos'] as number | undefined) ?? 0,
+    procesadoPor: (it['procesadoPor'] as string[] | undefined) ?? [],
+  });
+
   return {
     async agregar(rec) {
       const item: Record<string, unknown> = {
@@ -30,6 +41,11 @@ export function makeOutboxRepository(doc: DynamoDBDocumentClient, table: string)
       await doc.send(new PutCommand({ TableName: table, Item: item }));
     },
 
+    async porId(id) {
+      const res = await doc.send(new GetCommand({ TableName: table, Key: { PK: pk(id), SK } }));
+      return res.Item ? toRecord(res.Item) : null;
+    },
+
     async pendientes(limite) {
       const res = await doc.send(
         new QueryCommand({
@@ -41,15 +57,7 @@ export function makeOutboxRepository(doc: DynamoDBDocumentClient, table: string)
           ScanIndexForward: true,
         }),
       );
-      return (res.Items ?? []).map((it) => ({
-        id: it['id'],
-        tipo: it['tipo'],
-        payload: it['payload'],
-        createdAt: it['createdAt'],
-        estado: it['estado'],
-        intentos: it['intentos'] ?? 0,
-        procesadoPor: it['procesadoPor'] ?? [],
-      })) as OutboxRecord[];
+      return (res.Items ?? []).map(toRecord);
     },
 
     async marcarSuscriptor(id, suscriptor) {

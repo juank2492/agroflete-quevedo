@@ -2,6 +2,7 @@ import type { Routes } from '@angular/router';
 import { AdminShellComponent } from './admin-shell.component';
 import { ColaSolicitudesComponent } from './cola-solicitudes.component';
 import { FletesAdminComponent } from './fletes-admin.component';
+import { PagosAdminComponent } from './pagos.component';
 import { FlotaComponent } from './flota.component';
 import { MetricasComponent } from './metricas.component';
 import { TarifasComponent } from './tarifas.component';
@@ -22,6 +23,7 @@ export const adminRoutes: Routes = [
         title: 'Solicitudes · AgroFlete',
       },
       { path: 'fletes', component: FletesAdminComponent, title: 'Fletes · AgroFlete' },
+      { path: 'pagos', component: PagosAdminComponent, title: 'Pagos · AgroFlete' },
       { path: 'flota', component: FlotaComponent, title: 'Flota · AgroFlete' },
       { path: 'inventario', component: InventarioComponent, title: 'Inventario · AgroFlete' },
       {

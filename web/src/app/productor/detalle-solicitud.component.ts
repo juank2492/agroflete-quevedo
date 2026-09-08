@@ -12,14 +12,17 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { interval } from 'rxjs';
+import { pagoConfirmado } from '@agroflete/shared';
 import type { Flete, LatLon, RutaVialDTO, Solicitud, UbicacionFlete } from '@agroflete/shared';
 import { IconComponent } from '../core/icon.component';
 import { FleteService } from '../core/flete.service';
 import { GeoService } from '../core/geo.service';
 import { SolicitudService } from '../core/solicitud.service';
-import { EstadoBadgeComponent } from '../shared/estado-badge.component';
+import { EstadoSolicitudComponent } from '../shared/estado-solicitud.component';
 import { TimelineComponent } from '../shared/timeline.component';
 import { MapaFleteComponent } from '../shared/mapa-flete.component';
+import { PagoSolicitudComponent } from './pago-solicitud.component';
+import { tipoVehiculoLabel } from '../shared/vehiculo-labels';
 import { estadoViaje, haceTexto } from '../shared/tracking.util';
 
 const EN_CURSO = new Set(['ASIGNADO', 'EN_CAMINO_ORIGEN', 'CARGANDO', 'EN_RUTA']);
@@ -31,9 +34,10 @@ const EN_CURSO = new Set(['ASIGNADO', 'EN_CAMINO_ORIGEN', 'CARGANDO', 'EN_RUTA']
     DatePipe,
     DecimalPipe,
     IconComponent,
-    EstadoBadgeComponent,
+    EstadoSolicitudComponent,
     TimelineComponent,
     MapaFleteComponent,
+    PagoSolicitudComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -48,7 +52,7 @@ const EN_CURSO = new Set(['ASIGNADO', 'EN_CAMINO_ORIGEN', 'CARGANDO', 'EN_RUTA']
         <div class="mt-4 rounded-box bg-base-100 p-5 shadow-card">
           <div class="flex items-center justify-between">
             <h1 class="text-xl font-bold">{{ s.cultivoNombre }} · {{ s.pesoTon }} t</h1>
-            <app-estado-badge [estado]="s.estado" />
+            <app-estado-solicitud [solicitud]="s" />
           </div>
 
           <div class="mt-4 space-y-3 text-sm">
@@ -74,10 +78,16 @@ const EN_CURSO = new Set(['ASIGNADO', 'EN_CAMINO_ORIGEN', 'CARGANDO', 'EN_RUTA']
               <app-icon name="route" [size]="18" class="mt-0.5 text-base-content/50" />
               <div>{{ s.distanciaKm | number: '1.1-1' }} km por carretera (estimado)</div>
             </div>
+            @if (s.categoriaCarga) {
+              <div class="flex items-start gap-3">
+                <app-icon name="truck" [size]="18" class="mt-0.5 text-base-content/50" />
+                <div>{{ tipoLabel(s.categoriaCarga) }} ({{ s.pesoTon }} t)</div>
+              </div>
+            }
           </div>
 
           <div class="mt-4 flex items-center justify-between border-t border-base-300 pt-4">
-            <span class="text-base-content/60">Tarifa estimada</span>
+            <span class="text-base-content/60">Tarifa</span>
             <span class="font-display text-2xl font-bold text-primary">
               $ {{ s.tarifaEstimada | number: '1.2-2' }}
             </span>
@@ -85,11 +95,17 @@ const EN_CURSO = new Set(['ASIGNADO', 'EN_CAMINO_ORIGEN', 'CARGANDO', 'EN_RUTA']
 
           <p class="mt-3 text-xs text-base-content/50">
             Publicada el {{ s.createdAt | date: 'medium' }}.
-            @if (s.estado === 'PENDIENTE') {
+            @if (s.estado === 'PENDIENTE' && pagado()) {
               Esperando que la comercializadora asigne un transportista.
             }
           </p>
         </div>
+
+        @if (!flete()) {
+          <div class="mt-4">
+            <app-pago-solicitud [solicitud]="s" (procesado)="recargar()" />
+          </div>
+        }
 
         @if (flete(); as f) {
           <div class="mt-4 rounded-box bg-base-100 p-5 shadow-card">
@@ -187,6 +203,11 @@ export class DetalleSolicitudComponent implements OnInit {
     return !!f && EN_CURSO.has(f.estado);
   });
 
+  protected readonly pagado = computed(() => {
+    const s = this.solicitud();
+    return !!s && pagoConfirmado(s);
+  });
+
   protected readonly rutaVialEfectiva = computed<LatLon[]>(() => {
     const f = this.flete();
     if (f?.rutaVial?.length) return f.rutaVial;
@@ -212,6 +233,17 @@ export class DetalleSolicitudComponent implements OnInit {
   @Input() id!: string;
 
   ngOnInit(): void {
+    this.recargar();
+
+    interval(15_000)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        const f = this.flete();
+        if (f && this.enCurso()) this.cargarFlete(f.id);
+      });
+  }
+
+  protected recargar(): void {
     this.service.obtener(this.id).subscribe({
       next: (s) => {
         this.solicitud.set(s);
@@ -220,13 +252,6 @@ export class DetalleSolicitudComponent implements OnInit {
       },
       error: () => this.cargando.set(false),
     });
-
-    interval(15_000)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
-        const f = this.flete();
-        if (f && this.enCurso()) this.cargarFlete(f.id);
-      });
   }
 
   private cargarFlete(fleteId: string): void {
@@ -247,6 +272,8 @@ export class DetalleSolicitudComponent implements OnInit {
     if (!o || !d) return;
     this.geo.ruta(o, d).subscribe({ next: (r) => this.rutaFallback.set(r) });
   }
+
+  protected readonly tipoLabel = tipoVehiculoLabel;
 
   protected hace(iso: string): string {
     return haceTexto(iso);

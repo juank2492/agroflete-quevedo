@@ -3,6 +3,7 @@ import {
   Component,
   OnInit,
   computed,
+  effect,
   inject,
   signal,
 } from '@angular/core';
@@ -11,7 +12,8 @@ import { RouterLink } from '@angular/router';
 import { ESTADOS_SOLICITUD, type EstadoSolicitud, type Solicitud } from '@agroflete/shared';
 import { IconComponent } from '../core/icon.component';
 import { SolicitudService } from '../core/solicitud.service';
-import { EstadoBadgeComponent } from '../shared/estado-badge.component';
+import { SolicitudesColaService } from '../core/solicitudes-cola.service';
+import { EstadoSolicitudComponent } from '../shared/estado-solicitud.component';
 import { FiltroChipsComponent, type OpcionFiltro } from '../shared/filtro-chips.component';
 import { PaginacionComponent, paginar } from '../shared/paginacion.component';
 import { estadoLabel } from '../shared/estado-labels';
@@ -25,7 +27,7 @@ const POR_PAGINA = 8;
     DatePipe,
     DecimalPipe,
     IconComponent,
-    EstadoBadgeComponent,
+    EstadoSolicitudComponent,
     FiltroChipsComponent,
     PaginacionComponent,
   ],
@@ -38,6 +40,27 @@ const POR_PAGINA = 8;
           <app-icon name="plus" [size]="16" /> Nueva
         </a>
       </div>
+
+      @if (cola().length > 0) {
+        <div class="mt-4 rounded-box border border-warning/40 bg-warning/10 p-4">
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-medium">
+              {{ cola().length }} solicitud{{ cola().length === 1 ? '' : 'es' }} sin enviar
+            </span>
+            <button class="btn btn-ghost btn-xs" (click)="reintentar()">Reintentar</button>
+          </div>
+          <ul class="mt-2 space-y-1 text-sm text-base-content/70">
+            @for (c of cola(); track c.id) {
+              <li class="flex items-center gap-2">
+                <span class="badge badge-warning badge-xs">Sin enviar</span> {{ c.resumen }}
+              </li>
+            }
+          </ul>
+          <p class="mt-2 text-xs text-base-content/50">
+            Se enviarán automáticamente al recuperar la conexión.
+          </p>
+        </div>
+      }
 
       @if (cargando()) {
         <div class="mt-6 space-y-3">
@@ -76,7 +99,7 @@ const POR_PAGINA = 8;
                 >
                   <div class="flex items-center justify-between">
                     <span class="font-semibold">{{ s.cultivoNombre }} · {{ s.pesoTon }} t</span>
-                    <app-estado-badge [estado]="s.estado" />
+                    <app-estado-solicitud [solicitud]="s" />
                   </div>
                   <div class="mt-1 text-sm text-base-content/70">→ {{ s.acopioNombre }}</div>
                   <div class="mt-2 flex items-center justify-between text-sm">
@@ -106,6 +129,8 @@ const POR_PAGINA = 8;
 })
 export class MisSolicitudesComponent implements OnInit {
   private readonly service = inject(SolicitudService);
+  private readonly colaSvc = inject(SolicitudesColaService);
+  protected readonly cola = this.colaSvc.cola;
   protected readonly cargando = signal(true);
   protected readonly solicitudes = signal<Solicitud[]>([]);
   protected readonly filtro = signal<EstadoSolicitud | 'TODOS'>('TODOS');
@@ -132,7 +157,19 @@ export class MisSolicitudesComponent implements OnInit {
     paginar(this.filtradas(), this.pagina(), this.porPagina),
   );
 
+  constructor() {
+    // Cuando la cola offline logra enviar algo, recargar la lista.
+    effect(() => {
+      this.colaSvc.enviadas();
+      if (!this.cargando()) this.recargar();
+    });
+  }
+
   ngOnInit(): void {
+    this.recargar();
+  }
+
+  private recargar(): void {
     this.service.listar().subscribe({
       next: (list) => {
         this.solicitudes.set(list);
@@ -140,6 +177,10 @@ export class MisSolicitudesComponent implements OnInit {
       },
       error: () => this.cargando.set(false),
     });
+  }
+
+  protected reintentar(): void {
+    void this.colaSvc.flush();
   }
 
   protected cambiarFiltro(v: string): void {

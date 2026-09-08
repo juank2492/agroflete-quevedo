@@ -1,7 +1,12 @@
 import type { EstimacionTarifaRequest, EstimacionTarifaResponse } from '@agroflete/shared';
 import type { AppContext } from '../../app-context.js';
 import { NotFoundError, ValidationError } from '../../domain/errors.js';
-import { calcularTarifa, cultivoDeReglas } from '../../domain/tarifa.js';
+import {
+  calcularTarifa,
+  capacidadMaximaTransportable,
+  categoriaParaPeso,
+  cultivoDeReglas,
+} from '../../domain/tarifa.js';
 
 export async function estimarTarifa(
   ctx: AppContext,
@@ -18,13 +23,30 @@ export async function estimarTarifa(
   if (cultivo.activo === false) {
     throw new ValidationError(`El cultivo "${cultivo.nombre}" ya no está disponible`);
   }
+
+  const categoria = categoriaParaPeso(input.pesoTon, reglas);
+  if (!categoria) {
+    const max = capacidadMaximaTransportable(reglas);
+    throw new ValidationError(
+      `${input.pesoTon} t supera la capacidad máxima transportable (${max} t)`,
+    );
+  }
+
   const { distanciaKm, tarifa, enTemporada } = calcularTarifa({
     origen: input.origen,
     destino: { lat: acopio.lat, lon: acopio.lon },
+    pesoTon: input.pesoTon,
     cultivo: input.cultivo,
     fecha: ctx.clock.now(),
     reglas,
   });
 
-  return { distanciaKm, tarifa, enTemporada };
+  return {
+    distanciaKm,
+    tarifa,
+    enTemporada,
+    categoria: categoria.tipo,
+    costoPorTonKm: categoria.costoPorTonKm,
+    capacidadMaxTon: categoria.capacidadMaxTon,
+  };
 }

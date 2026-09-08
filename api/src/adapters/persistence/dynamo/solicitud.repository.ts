@@ -12,6 +12,7 @@ import type { SolicitudRepository } from '../../../core/ports/repositories.js';
 
 const SK = 'META';
 const pk = (id: string) => `SOLICITUD#${id}`;
+const idempPk = (productorId: string, key: string) => `SOL_IDEMP#${productorId}#${key}`;
 const gsiProductor = (productorId: string) => `PRODUCTOR#${productorId}`;
 const gsiEstado = (estado: EstadoSolicitud) => `ESTADO_SOL#${estado}`;
 
@@ -125,6 +126,11 @@ export function makeSolicitudRepository(
         sets.push('#mi = :mi');
         values[':mi'] = patch.motivoIncidencia;
       }
+      if (patch.pago !== undefined) {
+        names['#pago'] = 'pago';
+        sets.push('#pago = :pago');
+        values[':pago'] = patch.pago;
+      }
       if (!sets.length && !removes.length) return;
 
       const expr = [
@@ -170,6 +176,27 @@ export function makeSolicitudRepository(
         }),
       );
       return (res.Items ?? []).map(fromItem);
+    },
+
+    async porIdempotencyKey(productorId, key) {
+      const ptr = await doc.send(
+        new GetCommand({ TableName: table, Key: { PK: idempPk(productorId, key), SK } }),
+      );
+      const solicitudId = ptr.Item?.['solicitudId'] as string | undefined;
+      if (!solicitudId) return null;
+      const res = await doc.send(
+        new GetCommand({ TableName: table, Key: { PK: pk(solicitudId), SK } }),
+      );
+      return res.Item ? fromItem(res.Item) : null;
+    },
+
+    async registrarIdempotencia(productorId, key, solicitudId) {
+      await doc.send(
+        new PutCommand({
+          TableName: table,
+          Item: { PK: idempPk(productorId, key), SK, solicitudId },
+        }),
+      );
     },
   };
 }

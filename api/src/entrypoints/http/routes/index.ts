@@ -6,6 +6,8 @@ import { geoRoutes } from './geo.js';
 import { healthRoutes } from './health.js';
 import { inventarioRoutes } from './inventario.js';
 import { monitoreoRoutes } from './monitoreo.js';
+import { notificacionesRoutes } from './notificaciones.js';
+import { pagosRoutes } from './pagos.js';
 import { solicitudesRoutes } from './solicitudes.js';
 import { tarifasRoutes } from './tarifas.js';
 import { vehiculosRoutes } from './vehiculos.js';
@@ -17,8 +19,10 @@ export const routes: RouteDef[] = [
   ...geoRoutes,
   ...tarifasRoutes,
   ...solicitudesRoutes,
+  ...pagosRoutes,
   ...vehiculosRoutes,
   ...monitoreoRoutes,
+  ...notificacionesRoutes,
   ...inventarioRoutes,
   ...ajustesRoutes,
   ...flotaRoutes,

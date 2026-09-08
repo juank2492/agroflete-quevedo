@@ -1,8 +1,10 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { of } from 'rxjs';
 import type { Acopio, EstimacionTarifaResponse, Solicitud } from '@agroflete/shared';
 import { SolicitudService } from '../core/solicitud.service';
+import { SolicitudesColaService } from '../core/solicitudes-cola.service';
 import { TarifaService } from '../core/tarifa.service';
 import { UiFeedbackService } from '../core/ui-feedback.service';
 import { NuevaSolicitudComponent } from './nueva-solicitud.component';
@@ -18,6 +20,9 @@ const ESTIMACION: EstimacionTarifaResponse = {
   distanciaKm: 12.3,
   tarifa: 14.8,
   enTemporada: false,
+  categoria: 'camion',
+  costoPorTonKm: 0.05,
+  capacidadMaxTon: 12,
 };
 
 describe('NuevaSolicitudComponent — confirmar en ≤ 3 toques', () => {
@@ -52,6 +57,15 @@ describe('NuevaSolicitudComponent — confirmar en ≤ 3 toques', () => {
           },
         },
         { provide: SolicitudService, useValue: { crear: crearSpy } },
+        {
+          provide: SolicitudesColaService,
+          useValue: {
+            cola: signal([]),
+            enviadas: signal(0),
+            encolar: () => Promise.resolve(),
+            flush: () => Promise.resolve(),
+          },
+        },
         { provide: UiFeedbackService, useValue: { success: () => {}, error: () => {} } },
         { provide: Router, useValue: { navigate: navigateSpy } },
       ],

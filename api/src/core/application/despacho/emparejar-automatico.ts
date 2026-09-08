@@ -1,4 +1,4 @@
-import type { Flete } from '@agroflete/shared';
+import { pagoConfirmado, type Flete } from '@agroflete/shared';
 import type { AppContext } from '../../app-context.js';
 import { ConflictError } from '../../domain/errors.js';
 import { asignarFlete, listarVehiculosCompatibles } from './asignar-flete.js';
@@ -12,6 +12,7 @@ export async function emparejarAutomatico(
 ): Promise<Flete | null> {
   const solicitud = await ctx.repos.solicitudes.porId(solicitudId);
   if (!solicitud || solicitud.estado !== 'PENDIENTE') return null;
+  if (ctx.config.pagoObligatorio && !pagoConfirmado(solicitud)) return null;
 
   const compatibles = await listarVehiculosCompatibles(ctx, solicitudId);
   if (compatibles.length === 0) return null;

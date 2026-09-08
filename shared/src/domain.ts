@@ -89,6 +89,9 @@ export const TIPOS_EVENTO = [
   'StockBajo',
   'StockAlto',
   'TransportistaCreado',
+  'PagoAprobado',
+  'PagoRechazado',
+  'PagoEnRevision',
 ] as const;
 export const tipoEventoSchema = z.enum(TIPOS_EVENTO);
 export type TipoEvento = z.infer<typeof tipoEventoSchema>;

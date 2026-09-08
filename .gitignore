@@ -16,6 +16,7 @@ web/dist/
 .env.local
 .env.*.local
 !.env.example
+infra/bootstrap-prod.local.json
 
 # logs
 *.log

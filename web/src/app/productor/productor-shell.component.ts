@@ -2,10 +2,11 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from '../core/auth.service';
 import { IconComponent } from '../core/icon.component';
+import { NotificacionesComponent } from '../shared/notificaciones.component';
 
 @Component({
   selector: 'app-productor-shell',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, IconComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, IconComponent, NotificacionesComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex min-h-screen flex-col bg-base-200">
@@ -17,6 +18,7 @@ import { IconComponent } from '../core/icon.component';
           AgroFlete
         </a>
         <div class="flex items-center gap-2">
+          <app-notificaciones />
           <a
             routerLink="/p/perfil"
             routerLinkActive="text-primary"

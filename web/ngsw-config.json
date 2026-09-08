@@ -21,7 +21,7 @@
   "dataGroups": [
     {
       "name": "acopios",
-      "urls": ["/acopios"],
+      "urls": ["/api/acopios"],
       "cacheConfig": {
         "strategy": "freshness",
         "maxSize": 20,

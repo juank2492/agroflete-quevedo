@@ -84,6 +84,7 @@ describe('tarifas (integración con DynamoDB Local)', () => {
       origen: FINCA,
       acopioId: 'acopio-centro',
       cultivo: 'arroz',
+      pesoTon: 6,
     });
     expect(r.tarifa).toBeGreaterThan(0);
   });
@@ -108,7 +109,12 @@ describe('tarifas (integración con DynamoDB Local)', () => {
     expect(reglas.cultivos.find((c) => c.clave === 'banano')?.activo).toBe(false);
 
     await expect(
-      estimarTarifa(h.ctx, { origen: FINCA, acopioId: 'acopio-centro', cultivo: 'banano' }),
+      estimarTarifa(h.ctx, {
+        origen: FINCA,
+        acopioId: 'acopio-centro',
+        cultivo: 'banano',
+        pesoTon: 6,
+      }),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -122,7 +128,12 @@ describe('tarifas (integración con DynamoDB Local)', () => {
   it('estimarTarifa rechaza un cultivo que no está en el catálogo', async () => {
     if (!disponible) return;
     await expect(
-      estimarTarifa(h.ctx, { origen: FINCA, acopioId: 'acopio-centro', cultivo: 'platano' }),
+      estimarTarifa(h.ctx, {
+        origen: FINCA,
+        acopioId: 'acopio-centro',
+        cultivo: 'platano',
+        pesoTon: 6,
+      }),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -132,6 +143,7 @@ describe('tarifas (integración con DynamoDB Local)', () => {
       origen: FINCA,
       acopioId: 'acopio-centro',
       cultivo: 'maiz',
+      pesoTon: 6,
     });
     expect(r.distanciaKm).toBeGreaterThan(0);
     expect(r.tarifa).toBeGreaterThan(0);
@@ -141,7 +153,7 @@ describe('tarifas (integración con DynamoDB Local)', () => {
   it('estimarTarifa con acopio inexistente lanza NotFoundError', async () => {
     if (!disponible) return;
     await expect(
-      estimarTarifa(h.ctx, { origen: FINCA, acopioId: 'no-existe', cultivo: 'banano' }),
+      estimarTarifa(h.ctx, { origen: FINCA, acopioId: 'no-existe', cultivo: 'banano', pesoTon: 6 }),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 });
